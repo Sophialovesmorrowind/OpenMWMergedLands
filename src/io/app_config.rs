@@ -40,3 +40,33 @@ impl MergedLandsConfig {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::MergedLandsConfig;
+    use std::path::Path;
+
+    #[test]
+    fn output_file_dir_resolves_relative_paths_against_merged_lands_dir() {
+        let config: MergedLandsConfig = toml::from_str("output_file_dir = \"Merged Output\"")
+            .expect("config should parse");
+
+        let resolved = config
+            .output_file_dir(Path::new("/tmp/merged_lands"))
+            .expect("output path should be present");
+
+        assert_eq!(resolved, Path::new("/tmp/merged_lands/Merged Output"));
+    }
+
+    #[test]
+    fn output_file_dir_keeps_absolute_paths() {
+        let config: MergedLandsConfig = toml::from_str("output_file_dir = \"/var/tmp/out\"")
+            .expect("config should parse");
+
+        let resolved = config
+            .output_file_dir(Path::new("/tmp/ignored"))
+            .expect("output path should be present");
+
+        assert_eq!(resolved, Path::new("/var/tmp/out"));
+    }
+}

@@ -43,3 +43,32 @@ impl MergeStrategy for IgnoreStrategy {
         new
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::IgnoreStrategy;
+    use crate::io::parsed_plugins::ParsedPlugin;
+    use crate::land::grid_access::Index2D;
+    use crate::land::terrain_map::Vec2;
+    use crate::merge::merge_strategy::MergeStrategy;
+    use crate::merge::relative_terrain_map::RelativeTerrainMap;
+
+    #[test]
+    fn ignore_strategy_keeps_lhs_on_conflict() {
+        let plugin = ParsedPlugin::empty("plugin.esp");
+        let coords = Vec2::new(0, 0);
+        let value_name = "height_map";
+        let base = [[0i32, 0i32], [0i32, 0i32]];
+
+        let mut lhs = RelativeTerrainMap::<i32, 2>::empty(base);
+        lhs.set_value(Index2D::new(0, 0), 5);
+
+        let mut rhs = RelativeTerrainMap::<i32, 2>::empty(base);
+        rhs.set_value(Index2D::new(0, 0), 9);
+
+        let strategy = IgnoreStrategy::default();
+        let merged = strategy.apply(coords, &plugin, value_name, &lhs, &rhs);
+
+        assert_eq!(merged.get_value(Index2D::new(0, 0)), 5);
+    }
+}

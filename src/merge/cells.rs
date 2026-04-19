@@ -97,3 +97,91 @@ pub fn merge_cells(parsed_plugins: &ParsedPlugins) -> HashMap<Vec2<i32>, Modifie
 
     cells
 }
+
+#[cfg(test)]
+mod tests {
+    use super::merge_cells;
+    use crate::io::meta_schema::{MetaType, PluginMeta};
+    use crate::io::parsed_plugins::{ParsedPlugin, ParsedPlugins};
+    use crate::land::terrain_map::Vec2;
+    use std::sync::Arc;
+    use tes3::esp::{Cell, Plugin, TES3Object};
+
+    fn cell_at(x: i32, y: i32, id: &str) -> Cell {
+        let mut cell: Cell = Default::default();
+        cell.data.grid = (x, y);
+        cell.id = id.to_string();
+        cell
+    }
+
+    fn parsed_plugin(name: &str, cells: Vec<Cell>, meta_type: MetaType) -> Arc<ParsedPlugin> {
+        let mut records = Plugin::new();
+        for cell in cells {
+            records.objects.push(TES3Object::Cell(cell));
+        }
+
+        Arc::new(ParsedPlugin {
+            name: name.to_string(),
+            records,
+            meta: PluginMeta {
+                meta_type,
+                ..Default::default()
+            },
+        })
+    }
+
+    #[test]
+    fn merge_cells_applies_master_then_plugin_in_order() {
+        let master = parsed_plugin("master.esm", vec![cell_at(10, 20, "OldCell")], MetaType::Auto);
+        let plugin = parsed_plugin("mod.esp", vec![cell_at(10, 20, "NewCell")], MetaType::Auto);
+
+        let parsed_plugins = ParsedPlugins {
+            masters: vec![master],
+            plugins: vec![plugin],
+        };
+
+        let cells = merge_cells(&parsed_plugins);
+        let merged = cells
+            .get(&Vec2::new(10, 20))
+            .expect("merged cell should exist");
+
+        assert_eq!(merged.inner.id, "NewCell");
+        assert_eq!(merged.plugins.len(), 2);
+        assert_eq!(merged.plugins[0].name, "master.esm");
+        assert_eq!(merged.plugins[1].name, "mod.esp");
+    }
+
+    #[test]
+    fn merge_cells_skips_merged_lands_meta_plugins() {
+        let generated = parsed_plugin(
+            "Merged Lands.esp",
+            vec![cell_at(1, 2, "Generated")],
+            MetaType::MergedLands,
+        );
+
+        let parsed_plugins = ParsedPlugins {
+            masters: vec![],
+            plugins: vec![generated],
+        };
+
+        let cells = merge_cells(&parsed_plugins);
+        assert!(cells.is_empty());
+    }
+
+    #[test]
+    fn merge_cells_replaces_last_source_when_second_cell_is_identical() {
+        let first = parsed_plugin("a.esp", vec![cell_at(3, 4, "")], MetaType::Auto);
+        let second = parsed_plugin("b.esp", vec![cell_at(3, 4, "")], MetaType::Auto);
+
+        let parsed_plugins = ParsedPlugins {
+            masters: vec![],
+            plugins: vec![first, second],
+        };
+
+        let cells = merge_cells(&parsed_plugins);
+        let merged = cells.get(&Vec2::new(3, 4)).expect("merged cell should exist");
+
+        assert_eq!(merged.plugins.len(), 1);
+        assert_eq!(merged.plugins[0].name, "b.esp");
+    }
+}

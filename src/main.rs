@@ -153,7 +153,7 @@ mod cli {
         /// Used for plugin discovery only in classic Morrowind mode (`--vanilla`).
         data_files_dir: String,
 
-        #[clap(long, value_parser, conflicts_with = "openmw_cfg")]
+        #[clap(long, value_parser, conflicts_with = "openmw-cfg")]
         /// Enables classic Morrowind mode using `Data Files` + `Morrowind.ini`.
         /// When this is not set, the tool defaults to OpenMW mode.
         pub vanilla: bool,
@@ -284,6 +284,50 @@ mod cli {
             (self.stack_size_mb as usize) * 1024 * 1024
         }
     }
+
+    #[cfg(test)]
+    mod tests {
+        use super::Cli;
+        use clap::Parser;
+
+        #[test]
+        fn default_mode_is_openmw() {
+            let cli = Cli::try_parse_from(["merged_lands"]).expect("CLI should parse");
+            assert!(cli.is_openmw_mode());
+            assert_eq!(cli.output_file_name(), "Merged Lands.omwaddon");
+        }
+
+        #[test]
+        fn vanilla_mode_changes_default_output_name() {
+            let cli = Cli::try_parse_from(["merged_lands", "--vanilla"]).expect("CLI should parse");
+            assert!(!cli.is_openmw_mode());
+            assert_eq!(cli.output_file_name(), "Merged Lands.esp");
+        }
+
+        #[test]
+        fn explicit_output_file_name_wins() {
+            let cli = Cli::try_parse_from(["merged_lands", "--output-file", "custom.esp"])
+                .expect("CLI should parse");
+            assert_eq!(cli.output_file_name(), "custom.esp");
+        }
+
+        #[test]
+        fn vanilla_conflicts_with_openmw_cfg_flag() {
+            let err = Cli::try_parse_from([
+                "merged_lands",
+                "--vanilla",
+                "--openmw-cfg",
+                "/tmp/openmw.cfg",
+            ])
+            .expect_err("CLI should reject conflicting flags");
+
+            let rendered = err.to_string();
+            assert!(
+                rendered.contains("cannot be used with")
+                    || rendered.contains("conflicts with")
+            );
+        }
+    }
 }
 
 use cli::{Cli, SortOrder};
@@ -367,6 +411,7 @@ fn wait_for_user_exit(wait_for_exit: bool) {
 /// The main function.
 fn merge_all(cli: &Cli) -> Result<()> {
     let start = Instant::now();
+    let mut phase_start = Instant::now();
 
     let mut known_textures = KnownTextures::new();
 
@@ -444,9 +489,16 @@ fn merge_all(cli: &Cli) -> Result<()> {
     let is_openmw_mode = cli.is_openmw_mode();
     let parsed_plugins =
         ParsedPlugins::new(&data_dirs, plugin_source, effective_sort_order, is_openmw_mode)?;
+    debug!("Parsed plugins in {:?}", phase_start.elapsed());
+    phase_start = Instant::now();
 
     let (reference_landmass, modded_landmasses) =
         create_reference_and_modded_landmasses(&parsed_plugins, &mut known_textures, is_openmw_mode);
+    debug!(
+        "Built reference and modded landmasses in {:?}",
+        phase_start.elapsed()
+    );
+    phase_start = Instant::now();
 
     debug!(
         "Found {} masters and {} plugins",
@@ -467,6 +519,8 @@ fn merge_all(cli: &Cli) -> Result<()> {
     );
 
     let mut merged_lands = create_merged_lands_from_reference(reference_landmass.clone());
+    debug!("Created merged reference baseline in {:?}", phase_start.elapsed());
+    phase_start = Instant::now();
 
     // STEP 3:
     // For each LandmassDiff, [IMPLEMENTATION NOTE] same order as Plugin:
@@ -487,6 +541,8 @@ fn merge_all(cli: &Cli) -> Result<()> {
     // tears into the landscape that would be fixed by subsequent mods. (e.g. patches)
     // If we try to fix the seams early, sadness results.
     repair_landmass_seams(&mut merged_lands);
+    debug!("Merged land diffs and repaired seams in {:?}", phase_start.elapsed());
+    phase_start = Instant::now();
 
     // STEP 4:
     //  - Produce images of the final merge results.
@@ -496,6 +552,8 @@ fn merge_all(cli: &Cli) -> Result<()> {
     for modded_landmass in modded_landmasses.iter() {
         save_landmass_images(&merged_lands_dir, &merged_lands, modded_landmass);
     }
+    debug!("Saved conflict summary images in {:?}", phase_start.elapsed());
+    phase_start = Instant::now();
 
     let debug_vertex_colors = cli.add_debug_vertex_colors;
     if debug_vertex_colors {
@@ -514,6 +572,8 @@ fn merge_all(cli: &Cli) -> Result<()> {
     info!(":: Cleaning Land ::");
 
     clean_landmass_diff(&mut merged_lands, &modded_landmasses, is_openmw_mode);
+    debug!("Cleaned merged land diff in {:?}", phase_start.elapsed());
+    phase_start = Instant::now();
 
     // ---------------------------------------------------------------------------------------------
     // [IMPLEMENTATION NOTE] Below this line, the merged landmass cannot be diff'd against plugins.
@@ -525,6 +585,8 @@ fn merge_all(cli: &Cli) -> Result<()> {
 
     let remapped_textures =
         clean_known_textures(&parsed_plugins, &merged_lands, &mut known_textures);
+    debug!("Updated LTEX records in {:?}", phase_start.elapsed());
+    phase_start = Instant::now();
 
     // STEP 7:
     // Convert "height map" representation of LAND records to "xy delta + offset" representation.
@@ -532,6 +594,8 @@ fn merge_all(cli: &Cli) -> Result<()> {
     info!(":: Converting to LAND Records ::");
 
     let landmass = convert_landmass_diff_to_landmass(&merged_lands, &remapped_textures);
+    debug!("Converted merged diff to LAND records in {:?}", phase_start.elapsed());
+    phase_start = Instant::now();
 
     // STEP 7:
     // Save to an ESP.
@@ -571,6 +635,7 @@ fn merge_all(cli: &Cli) -> Result<()> {
         &known_textures,
         include_cell_records.then_some(&cells),
     )?;
+    debug!("Saved plugin and metadata in {:?}", phase_start.elapsed());
 
     info!(":: Finished ::");
     info!("Time Elapsed: {:?}", Instant::now().duration_since(start));
@@ -785,13 +850,14 @@ fn merge_tes3_landmasses(
 
     for landmass in landmasses {
         for (coords, land) in landmass.land.iter() {
-            let merged_land = if merged_landmass.land.contains_key(coords) {
-                merge_tes3_landscape(merged_landmass.land.get(coords).expect("safe"), land)
+            let merged_land = if let Some(existing) = merged_landmass.land.get(coords) {
+                merge_tes3_landscape(existing, land)
             } else {
                 land.clone()
             };
 
-            merged_landmass.insert_land(*coords, &landmass.plugin, &merged_land);
+            merged_landmass.land.insert(*coords, merged_land);
+            merged_landmass.plugins.insert(*coords, landmass.plugin.clone());
         }
     }
 
@@ -827,13 +893,14 @@ fn find_allowed_data(plugin: &ParsedPlugin, land: &Landscape) -> LandData {
 /// still respecting the current master-before-plugin ordering used by the tool.
 fn merge_tes3_landmass_into(merged: &mut Landmass, next: &Landmass) {
     for (coords, land) in next.land.iter() {
-        let merged_land = if merged.land.contains_key(coords) {
-            merge_tes3_landscape(merged.land.get(coords).expect("safe"), land)
+        let merged_land = if let Some(existing) = merged.land.get(coords) {
+            merge_tes3_landscape(existing, land)
         } else {
             land.clone()
         };
 
-        merged.insert_land(*coords, &next.plugin, &merged_land);
+        merged.land.insert(*coords, merged_land);
+        merged.plugins.insert(*coords, next.plugin.clone());
     }
 }
 
@@ -1038,12 +1105,9 @@ fn merge_landmass_into(merged: &mut LandmassDiff, plugin: &LandmassDiff, is_open
     );
 
     for (coords, land) in plugin.sorted() {
-        if merged.land.contains_key(coords) {
-            let merged_land = merged.land.get(coords).expect("safe");
-            merged.land.insert(
-                *coords,
-                merge_landscape_diff(&plugin.plugin, merged_land, land, is_openmw_mode),
-            );
+        if let Some(existing) = merged.land.get_mut(coords) {
+            let updated = merge_landscape_diff(&plugin.plugin, existing, land, is_openmw_mode);
+            *existing = updated;
         } else {
             let mut merged_land = land.clone();
             merged_land
@@ -1086,4 +1150,49 @@ fn create_merged_lands_from_reference(reference: Arc<Landmass>) -> LandmassDiff 
     }
 
     landmass_diff
+}
+
+#[cfg(test)]
+mod tests {
+    use super::merge_openmw_texture_indices;
+    use crate::land::grid_access::Index2D;
+    use crate::land::textures::IndexVTEX;
+    use crate::merge::relative_terrain_map::{IsModified, RelativeTerrainMap};
+
+    fn idx(v: u16) -> IndexVTEX {
+        IndexVTEX::new(v)
+    }
+
+    #[test]
+    fn openmw_texture_merge_applies_only_changed_cells_from_new() {
+        let base = [[idx(0); 16]; 16];
+
+        let mut old = RelativeTerrainMap::<IndexVTEX, 16>::empty(base);
+        old.set_value(Index2D::new(0, 0), idx(10));
+
+        let mut new = RelativeTerrainMap::<IndexVTEX, 16>::empty(base);
+        new.set_value(Index2D::new(1, 1), idx(40));
+
+        let merged = merge_openmw_texture_indices(Some(&old), Some(&new)).expect("merged map");
+
+        assert_eq!(merged.get_value(Index2D::new(0, 0)).as_u16(), 10);
+        assert_eq!(merged.get_value(Index2D::new(1, 1)).as_u16(), 40);
+        assert_eq!(merged.get_value(Index2D::new(0, 1)).as_u16(), 0);
+        assert_eq!(merged.get_value(Index2D::new(1, 0)).as_u16(), 0);
+    }
+
+    #[test]
+    fn openmw_texture_merge_returns_old_when_new_has_no_effective_changes() {
+        let base = [[idx(0); 16]; 16];
+
+        let mut old = RelativeTerrainMap::<IndexVTEX, 16>::empty(base);
+        old.set_value(Index2D::new(0, 0), idx(10));
+
+        let new = RelativeTerrainMap::<IndexVTEX, 16>::empty(base);
+
+        let merged = merge_openmw_texture_indices(Some(&old), Some(&new)).expect("merged map");
+        assert!(merged.is_modified());
+        assert_eq!(merged.get_value(Index2D::new(0, 0)).as_u16(), 10);
+        assert_eq!(merged.get_value(Index2D::new(1, 1)).as_u16(), 0);
+    }
 }

@@ -248,7 +248,8 @@ pub fn sort_plugins(
         return Ok(());
     }
 
-    // Pre-validate that every plugin resolves and has readable metadata.
+    // Resolve and read metadata once per plugin; sorting then reuses cached keys.
+    let mut cached_order = HashMap::with_capacity(plugin_list.len());
     for plugin_name in plugin_list.iter() {
         let path = data_dirs.resolve(plugin_name).with_context(|| {
             anyhow!(
@@ -256,23 +257,20 @@ pub fn sort_plugins(
                 plugin_name
             )
         })?;
-        path.metadata()
-            .map(|metadata| FileTime::from_last_modification_time(&metadata))
-            .with_context(|| anyhow!("Unable to read metadata for plugin {}", plugin_name))?;
-    }
-
-    let order = |plugin_name: &str| {
-        // Order by modified time, with ESMs given priority.
-        let is_esm = is_esm(plugin_name);
-        let path = data_dirs.resolve(plugin_name).expect("validated above");
         let last_modified_time = path
             .metadata()
             .map(|metadata| FileTime::from_last_modification_time(&metadata))
-            .expect("safe");
-        (!is_esm, last_modified_time)
-    };
+            .with_context(|| anyhow!("Unable to read metadata for plugin {}", plugin_name))?;
 
-    plugin_list.sort_by(|a, b| order(a).cmp(&order(b)));
+        cached_order.insert(plugin_name.clone(), (!is_esm(plugin_name), last_modified_time));
+    }
+
+    plugin_list.sort_by(|a, b| {
+        cached_order
+            .get(a)
+            .expect("validated above")
+            .cmp(cached_order.get(b).expect("validated above"))
+    });
 
     Ok(())
 }
