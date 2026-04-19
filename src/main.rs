@@ -100,11 +100,11 @@ mod cli {
     use crate::io::parsed_plugins::OpenMWCfgSource;
     use crate::ParsedPlugins;
     use anyhow::{anyhow, Context, Result};
-    use clap::{AppSettings, ArgEnum, Parser};
+    use clap::{Parser, ValueEnum};
     use log::LevelFilter;
     use std::path::PathBuf;
 
-    #[derive(Copy, PartialEq, Eq, Debug, Hash, Clone, ArgEnum)]
+    #[derive(Copy, PartialEq, Eq, Debug, Hash, Clone, ValueEnum)]
     pub enum CliLevelFilter {
         Off,
         Error,
@@ -114,7 +114,7 @@ mod cli {
         Trace,
     }
 
-    #[derive(Copy, PartialEq, Eq, Debug, Hash, Clone, ArgEnum)]
+    #[derive(Copy, PartialEq, Eq, Debug, Hash, Clone, ValueEnum)]
     pub enum SortOrder {
         Default,
         None,
@@ -134,78 +134,77 @@ mod cli {
     }
 
     #[derive(Parser, Debug)]
-    #[clap(author = "DVD")]
-    #[clap(about = "Merges lands.")]
-    #[clap(version)]
-    #[clap(long_about = None)] // Read from `Cargo.toml`
-    #[clap(global_setting(AppSettings::DeriveDisplayOrder))]
+    #[command(author = "DVD")]
+    #[command(about = "Merges lands.")]
+    #[command(version)]
+    #[command(long_about = None)] // Read from `Cargo.toml`
     pub struct Cli {
-        #[clap(long, value_parser, default_value_t = String::from("."))]
+        #[arg(long, default_value_t = String::from("."))]
         /// The directory containing the `Conflicts` folder.
         /// This is also where the `log_file` and optional `merged_lands.toml` config are stored.
         merged_lands_dir: String,
 
-        #[clap(long, value_parser, default_value_t = String::from("Data Files"))]
+        #[arg(long, default_value_t = String::from("Data Files"))]
         /// The absolute or relative path to the `Data Files` folder containing plugins.
         /// Used for plugin discovery only in classic Morrowind mode (`--vanilla`).
         data_files_dir: String,
 
-        #[clap(long, value_parser, conflicts_with = "openmw-cfg")]
+        #[arg(long, conflicts_with = "openmw_cfg")]
         /// Enables classic Morrowind mode using `Data Files` + `Morrowind.ini`.
         /// When this is not set, the tool defaults to OpenMW mode.
         pub vanilla: bool,
 
-        #[clap(long, value_parser, conflicts_with = "vanilla")]
+        #[arg(long, conflicts_with = "vanilla")]
         /// Uses the `openmw.cfg` at this path instead of the platform-default location.
         /// The path may be either a directory containing `openmw.cfg` or a direct path to the
         /// file. OpenMW mode is the default when `--vanilla` is not set.
         pub openmw_cfg: Option<String>,
 
-        #[clap(long, value_parser)]
+        #[arg(long)]
         /// The name of the output file. This will be written to `output_file_dir`.
         /// Defaults to `Merged Lands.omwaddon` in OpenMW mode and `Merged Lands.esp` in
         /// `--vanilla` mode.
         pub output_file: Option<String>,
 
-        #[clap(long, value_parser)]
+        #[arg(long)]
         /// The directory for the `output_file`.
         /// If not provided, the resolution order is:
         /// `merged_lands.toml`, OpenMW `data-local`, then `data_files_dir` in `--vanilla` mode.
         output_file_dir: Option<String>,
 
-        #[clap(value_parser, required = false)]
+        #[arg(required = false)]
         /// An ordered list of plugins.
         /// If this is not provided, the tool will use `content=` entries from `openmw.cfg` by
         /// default, or `Morrowind.ini` in `--vanilla` mode.
         input_file_names: Vec<String>,
 
-        #[clap(long, arg_enum, value_parser, default_value_t = SortOrder::Default)]
+        #[arg(long, value_enum, default_value_t = SortOrder::Default)]
         /// The method of sorting plugins.
         /// `none` is only valid if `input_file_names` are provided.
         pub sort_order: SortOrder,
 
-        #[clap(long, value_parser, default_value_t = String::from("merged_lands.log"))]
+        #[arg(long, default_value_t = String::from("merged_lands.log"))]
         /// The name of the log file. This will be written to `merged_lands_dir`.
         pub log_file: String,
 
-        #[clap(long, arg_enum, value_parser, default_value_t = CliLevelFilter::Debug)]
+        #[arg(long, value_enum, default_value_t = CliLevelFilter::Debug)]
         /// The level of logging.
         /// If set to Off, no log will will be written.
         pub log_level: CliLevelFilter,
 
-        #[clap(long, value_parser, default_value_t = 8)]
+        #[arg(long, default_value_t = 8)]
         /// The size of the application's stack in MB.
         stack_size_mb: u8,
 
-        #[clap(long, value_parser)]
+        #[arg(long)]
         /// The application will remove all CELL records when this flag is provided.
         pub remove_cell_records: bool,
 
-        #[clap(long, value_parser)]
+        #[arg(long)]
         /// The application will color the LAND vertex colors to show conflicts.
         pub add_debug_vertex_colors: bool,
 
-        #[clap(long, value_parser)]
+        #[arg(long)]
         /// The application will wait for the user to hit the ENTER key before closing.
         pub wait_for_exit: bool,
     }
