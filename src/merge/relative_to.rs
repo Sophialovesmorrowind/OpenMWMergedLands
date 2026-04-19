@@ -83,3 +83,52 @@ impl<T: RelativeTo> RelativeTo for Vec3<T> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::RelativeTo;
+    use crate::land::terrain_map::Vec3;
+
+    #[test]
+    fn i32_roundtrip_is_identity() {
+        let lhs = 42i32;
+        let rhs = 7i32;
+        let delta = i32::subtract(lhs, rhs);
+        assert_eq!(delta, 35);
+        assert_eq!(i32::add(rhs, delta), lhs);
+    }
+
+    #[test]
+    fn u8_roundtrip_is_identity_for_safe_values() {
+        let lhs = 240u8;
+        let rhs = 100u8;
+        let delta = u8::subtract(lhs, rhs);
+        assert_eq!(u8::add(rhs, delta), lhs);
+    }
+
+    #[test]
+    fn i8_roundtrip_is_identity_for_safe_values() {
+        let lhs = 100i8;
+        let rhs = -10i8;
+        let delta = i8::subtract(lhs, rhs);
+        assert_eq!(i8::add(rhs, delta), lhs);
+    }
+
+    #[test]
+    fn u16_roundtrip_is_identity_for_safe_values() {
+        let lhs = 50_000u16;
+        let rhs = 12_000u16;
+        let delta = u16::subtract(lhs, rhs);
+        assert_eq!(u16::add(rhs, delta), lhs);
+    }
+
+    #[test]
+    fn vec3_roundtrip_is_component_wise_identity() {
+        let lhs = Vec3::new(9i32, 6i32, 3i32);
+        let rhs = Vec3::new(1i32, 2i32, 3i32);
+        let delta = Vec3::<i32>::subtract(lhs, rhs);
+
+        assert_eq!(delta, Vec3::new(8, 4, 0));
+        assert_eq!(Vec3::<i32>::add(rhs, delta), lhs);
+    }
+}

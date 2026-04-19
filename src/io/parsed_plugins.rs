@@ -639,3 +639,27 @@ impl ParsedPlugins {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{is_esm, is_esp, meta_name};
+
+    #[test]
+    fn extension_helpers_are_case_insensitive() {
+        assert!(is_esm("Morrowind.ESM"));
+        assert!(is_esp("Patch.EsP"));
+
+        assert!(!is_esm("mod.esp"));
+        assert!(!is_esp("mod.esm"));
+        assert!(!is_esp("README"));
+    }
+
+    #[test]
+    fn meta_name_replaces_extension_with_sidecar_name() {
+        assert_eq!(meta_name("Morrowind.esm"), "Morrowind.mergedlands.toml");
+        assert_eq!(
+            meta_name("Data Files/Plugin.esp"),
+            "Plugin.mergedlands.toml"
+        );
+    }
+}

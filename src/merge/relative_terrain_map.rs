@@ -190,3 +190,77 @@ pub fn recompute_vertex_normals(
 
     recomputed_vertex_normals
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{recompute_vertex_normals, IsModified, OptionalTerrainMap, RelativeTerrainMap};
+    use crate::land::grid_access::{GridAccessor2D, Index2D};
+    use crate::land::terrain_map::{TerrainMap, Vec3};
+
+    #[test]
+    fn set_value_marks_and_gets_difference() {
+        let reference = [[0i32; 2]; 2];
+        let mut map = RelativeTerrainMap::<i32, 2>::empty(reference);
+
+        let coords = Index2D::new(1, 0);
+        map.set_value(coords, 5);
+
+        assert!(map.has_difference(coords));
+        assert_eq!(map.get_difference(coords), 5);
+        assert_eq!(map.get_value(coords), 5);
+        assert!(map.is_modified());
+    }
+
+    #[test]
+    fn from_difference_roundtrips_plugin_values() {
+        let reference = [[1i32, 2], [3, 4]];
+        let plugin = [[1i32, 20], [30, 4]];
+        let map = RelativeTerrainMap::<i32, 2>::from_difference(&reference, &plugin);
+
+        assert_eq!(map.to_terrain(), plugin);
+        assert!(!map.has_difference(Index2D::new(0, 0)));
+        assert!(map.has_difference(Index2D::new(1, 0)));
+        assert!(map.has_difference(Index2D::new(0, 1)));
+    }
+
+    #[test]
+    fn clean_some_and_clean_all_clear_differences() {
+        let mut map = RelativeTerrainMap::<i32, 2>::empty([[0i32; 2]; 2]);
+        let c0 = Index2D::new(0, 0);
+        let c1 = Index2D::new(1, 1);
+
+        map.set_value(c0, 7);
+        map.set_value(c1, 9);
+
+        map.clean_some([c0].into_iter());
+        assert!(!map.has_difference(c0));
+        assert!(map.has_difference(c1));
+
+        map.clean_all();
+        assert!(!map.has_difference(c0));
+        assert!(!map.has_difference(c1));
+        assert!(!map.is_modified());
+    }
+
+    #[test]
+    fn optional_is_modified_tracks_presence_and_inner_state() {
+        let none_map: OptionalTerrainMap<i32, 2> = None;
+        assert!(!none_map.is_modified());
+
+        let mut some_map = RelativeTerrainMap::<i32, 2>::empty([[0i32; 2]; 2]);
+        assert!(!Some(some_map.clone()).is_modified());
+
+        some_map.set_value(Index2D::new(0, 0), 1);
+        assert!(Some(some_map).is_modified());
+    }
+
+    #[test]
+    fn recompute_vertex_normals_reuses_unmodified_existing_values() {
+        let height_map = RelativeTerrainMap::<i32, 65>::empty([[0i32; 65]; 65]);
+        let old_normals_reference: TerrainMap<Vec3<i8>, 65> = [[Vec3::new(7, -3, 2); 65]; 65];
+        let old_normals = RelativeTerrainMap::<Vec3<i8>, 65>::empty(old_normals_reference);
+
+        let recomputed = recompute_vertex_normals(&height_map, Some(&old_normals));
+        assert_eq!(recomputed.get(Index2D::new(10, 10)), Vec3::new(7, -3, 2));
+    }
+}

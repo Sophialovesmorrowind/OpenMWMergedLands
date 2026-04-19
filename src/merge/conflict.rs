@@ -125,3 +125,57 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{ConflictResolver, ConflictType};
+    use crate::land::terrain_map::Vec3;
+
+    #[test]
+    fn equal_scalars_have_no_conflict() {
+        let params = super::ConflictParams::default();
+        assert!(10i32.average(10, &params).is_none());
+    }
+
+    #[test]
+    fn close_scalars_are_minor_conflicts() {
+        let params = super::ConflictParams::default();
+        match 100i32.average(102, &params) {
+            Some(ConflictType::Minor(v)) => assert!((100..=102).contains(&v)),
+            _ => panic!("expected minor conflict"),
+        }
+    }
+
+    #[test]
+    fn far_scalars_are_major_conflicts() {
+        let params = super::ConflictParams::default();
+        match 0i32.average(100, &params) {
+            Some(ConflictType::Major(v)) => assert!((0..=100).contains(&v)),
+            _ => panic!("expected major conflict"),
+        }
+    }
+
+    #[test]
+    fn vec3_with_major_component_is_major() {
+        let params = super::ConflictParams::default();
+        let lhs = Vec3::new(0i32, 10i32, 10i32);
+        let rhs = Vec3::new(100i32, 12i32, 12i32);
+
+        match lhs.average(rhs, &params) {
+            Some(ConflictType::Major(_)) => {}
+            _ => panic!("expected major vec3 conflict"),
+        }
+    }
+
+    #[test]
+    fn vec3_with_only_minor_components_is_minor() {
+        let params = super::ConflictParams::default();
+        let lhs = Vec3::new(100i32, 100i32, 100i32);
+        let rhs = Vec3::new(102i32, 101i32, 103i32);
+
+        match lhs.average(rhs, &params) {
+            Some(ConflictType::Minor(_)) => {}
+            _ => panic!("expected minor vec3 conflict"),
+        }
+    }
+}
