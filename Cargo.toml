@@ -42,7 +42,7 @@ owo-colors = "3.4.0"
 regex = "1.6.0"
 
 # Used when parsing openmw.cfg (OpenMW configuration files).
-openmw-config = { path = "./Openmw_Config-main" }
+openmw-config = "1.0.1"
 
 # Needed for cross-platform file operations.
 filesize = "0.2.0"  # For byte size used in ESP dependencies.
