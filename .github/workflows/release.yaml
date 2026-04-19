@@ -1,0 +1,21 @@
+name: Corprus Crucible Manufacturing
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: main
+    tags: ['*']
+
+jobs:
+  build-app:
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    uses: DreamWeave-MP/StroggForge/.github/workflows/rustGlobalBuild.yml@v9
+    secrets: inherit
+    with:
+      binary_names: '["merged_lands"]'
+      publish_docs: true
+      cargo_publish: false
