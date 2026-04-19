@@ -3,7 +3,7 @@ use crate::io::meta_schema::{PluginMeta, VersionedPluginMeta};
 use crate::term_style::{bold, bold_red, yellow};
 use anyhow::{anyhow, bail, Context, Result};
 use log::{debug, error, info, trace, warn};
-use openmw_config::{OpenMWConfiguration, default_data_local_path};
+use openmw_config::{default_data_local_path, OpenMWConfiguration};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::fs::File;
@@ -74,7 +74,6 @@ impl DataDirs {
     pub fn iter(&self) -> impl Iterator<Item = &Path> {
         self.dirs.iter().map(|p| p.as_path())
     }
-
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -260,7 +259,10 @@ pub fn sort_plugins(
             .and_then(|metadata| metadata.modified())
             .with_context(|| anyhow!("Unable to read metadata for plugin {}", plugin_name))?;
 
-        cached_order.insert(plugin_name.clone(), (!is_esm(plugin_name), last_modified_time));
+        cached_order.insert(
+            plugin_name.clone(),
+            (!is_esm(plugin_name), last_modified_time),
+        );
     }
 
     plugin_list.sort_by(|a, b| {
@@ -373,7 +375,10 @@ fn read_ini_file(data_dirs: &DataDirs, path: &Path) -> Result<Vec<String>> {
             let Some((key, value)) = line.split_once('=') else {
                 warn!(
                     "{}",
-                    yellow(format!("Found junk in [Game Files] section: {}", bold(&line)))
+                    yellow(format!(
+                        "Found junk in [Game Files] section: {}",
+                        bold(&line)
+                    ))
                 );
                 continue;
             };
@@ -381,7 +386,10 @@ fn read_ini_file(data_dirs: &DataDirs, path: &Path) -> Result<Vec<String>> {
             let Some(index) = key.strip_prefix("GameFile") else {
                 warn!(
                     "{}",
-                    yellow(format!("Found junk in [Game Files] section: {}", bold(&line)))
+                    yellow(format!(
+                        "Found junk in [Game Files] section: {}",
+                        bold(&line)
+                    ))
                 );
                 continue;
             };
@@ -389,7 +397,10 @@ fn read_ini_file(data_dirs: &DataDirs, path: &Path) -> Result<Vec<String>> {
             if index.is_empty() || !index.chars().all(|ch| ch.is_ascii_digit()) {
                 warn!(
                     "{}",
-                    yellow(format!("Found junk in [Game Files] section: {}", bold(&line)))
+                    yellow(format!(
+                        "Found junk in [Game Files] section: {}",
+                        bold(&line)
+                    ))
                 );
                 continue;
             }
@@ -579,8 +590,7 @@ impl ParsedPlugins {
                     None => {
                         warn!(
                             "OpenMW load order problem: {} declares missing master {}",
-                            plugin.name,
-                            master_name
+                            plugin.name, master_name
                         );
                         found_invalid_dependency_order = true;
                     }
@@ -617,7 +627,10 @@ impl ParsedPlugins {
             Ok(VersionedPluginMeta::Unsupported) => {
                 error!(
                     "{}",
-                    bold_red(format!("Unsupported plugin meta file {}", bold(&meta_file_name)))
+                    bold_red(format!(
+                        "Unsupported plugin meta file {}",
+                        bold(&meta_file_name)
+                    ))
                 );
                 None
             }

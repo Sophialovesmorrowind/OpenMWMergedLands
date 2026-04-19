@@ -176,7 +176,8 @@ fn repair_corner_seams(
         for corner in case.corners.iter() {
             let Some(land) = merged
                 .land
-                .get_mut(&coords_with_offset(coords, corner.cell_offset)) else {
+                .get_mut(&coords_with_offset(coords, corner.cell_offset))
+            else {
                 continue;
             };
 

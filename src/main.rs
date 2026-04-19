@@ -1,4 +1,4 @@
-use crate::io::app_config::{CONFIG_FILE_NAME, MergedLandsConfig};
+use crate::io::app_config::{MergedLandsConfig, CONFIG_FILE_NAME};
 use crate::io::meta_schema::{ConflictStrategy, MetaType};
 use crate::io::parsed_plugins::{
     load_openmw_cfg, DataDirs, ParsedPlugin, ParsedPlugins, PluginListSource,
@@ -215,8 +215,7 @@ mod cli {
 
     impl Cli {
         pub fn read_args() -> Cli {
-            let args = wild::args();
-            Cli::parse_from(args)
+            Cli::parse_from(wild::args())
         }
 
         pub fn plugins(&self) -> Option<&[String]> {
@@ -263,11 +262,13 @@ mod cli {
         }
 
         pub fn output_file_name(&self) -> &str {
-            self.output_file.as_deref().unwrap_or(if self.is_openmw_mode() {
-                "Merged Lands.omwaddon"
-            } else {
-                "Merged Lands.esp"
-            })
+            self.output_file
+                .as_deref()
+                .unwrap_or(if self.is_openmw_mode() {
+                    "Merged Lands.omwaddon"
+                } else {
+                    "Merged Lands.esp"
+                })
         }
 
         pub fn output_file_dir(&self) -> Result<PathBuf> {
@@ -323,8 +324,7 @@ mod cli {
 
             let rendered = err.to_string();
             assert!(
-                rendered.contains("cannot be used with")
-                    || rendered.contains("conflicts with")
+                rendered.contains("cannot be used with") || rendered.contains("conflicts with")
             );
         }
     }
@@ -373,14 +373,23 @@ fn main() -> Result<()> {
     match work_thread.join() {
         Ok(Ok(())) => {}
         Ok(Err(e)) => {
-            error!("{}", bold_red(format!("An unexpected error occurred: {:?}", bold(format!("{e:?}")))));
+            error!(
+                "{}",
+                bold_red(format!(
+                    "An unexpected error occurred: {:?}",
+                    bold(format!("{e:?}"))
+                ))
+            );
 
             wait_for_user_exit(wait_for_exit);
             exit(1);
         }
         Err(panic) => {
             let message = format_thread_panic(panic);
-            error!("{}", bold_red(format!("Worker thread panicked: {}", bold(message))));
+            error!(
+                "{}",
+                bold_red(format!("Worker thread panicked: {}", bold(message)))
+            );
 
             wait_for_user_exit(wait_for_exit);
             exit(1);
@@ -481,13 +490,20 @@ fn merge_all(cli: &Cli) -> Result<()> {
         };
 
     let is_openmw_mode = cli.is_openmw_mode();
-    let parsed_plugins =
-        ParsedPlugins::new(&data_dirs, plugin_source, effective_sort_order, is_openmw_mode)?;
+    let parsed_plugins = ParsedPlugins::new(
+        &data_dirs,
+        plugin_source,
+        effective_sort_order,
+        is_openmw_mode,
+    )?;
     debug!("Parsed plugins in {:?}", phase_start.elapsed());
     phase_start = Instant::now();
 
-    let (reference_landmass, modded_landmasses) =
-        create_reference_and_modded_landmasses(&parsed_plugins, &mut known_textures, is_openmw_mode);
+    let (reference_landmass, modded_landmasses) = create_reference_and_modded_landmasses(
+        &parsed_plugins,
+        &mut known_textures,
+        is_openmw_mode,
+    );
     debug!(
         "Built reference and modded landmasses in {:?}",
         phase_start.elapsed()
@@ -513,7 +529,10 @@ fn merge_all(cli: &Cli) -> Result<()> {
     );
 
     let mut merged_lands = create_merged_lands_from_reference(reference_landmass.clone());
-    debug!("Created merged reference baseline in {:?}", phase_start.elapsed());
+    debug!(
+        "Created merged reference baseline in {:?}",
+        phase_start.elapsed()
+    );
     phase_start = Instant::now();
 
     // STEP 3:
@@ -535,7 +554,10 @@ fn merge_all(cli: &Cli) -> Result<()> {
     // tears into the landscape that would be fixed by subsequent mods. (e.g. patches)
     // If we try to fix the seams early, sadness results.
     repair_landmass_seams(&mut merged_lands);
-    debug!("Merged land diffs and repaired seams in {:?}", phase_start.elapsed());
+    debug!(
+        "Merged land diffs and repaired seams in {:?}",
+        phase_start.elapsed()
+    );
     phase_start = Instant::now();
 
     // STEP 4:
@@ -544,7 +566,10 @@ fn merge_all(cli: &Cli) -> Result<()> {
 
     let merged_lands_dir = cli.merged_lands_dir()?;
     save_landmass_images(&merged_lands_dir, &merged_lands, &modded_landmasses);
-    debug!("Saved conflict summary images in {:?}", phase_start.elapsed());
+    debug!(
+        "Saved conflict summary images in {:?}",
+        phase_start.elapsed()
+    );
     phase_start = Instant::now();
 
     let debug_vertex_colors = cli.add_debug_vertex_colors;
@@ -586,7 +611,10 @@ fn merge_all(cli: &Cli) -> Result<()> {
     info!(":: Converting to LAND Records ::");
 
     let landmass = convert_landmass_diff_to_landmass(&merged_lands, &remapped_textures);
-    debug!("Converted merged diff to LAND records in {:?}", phase_start.elapsed());
+    debug!(
+        "Converted merged diff to LAND records in {:?}",
+        phase_start.elapsed()
+    );
     phase_start = Instant::now();
 
     // STEP 7:
@@ -693,8 +721,8 @@ fn init_log(cli: &Cli) -> bool {
                     "Failed to create log file at {}",
                     bold(
                         get_log_file_path()
-                        .unwrap_or_else(|_| PathBuf::from(&cli.log_file))
-                        .to_string_lossy()
+                            .unwrap_or_else(|_| PathBuf::from(&cli.log_file))
+                            .to_string_lossy()
                     )
                 )),
                 bold_red(format!("due to: {:?}", bold(format!("{e:?}"))))
@@ -849,7 +877,9 @@ fn merge_tes3_landmasses(
             };
 
             merged_landmass.land.insert(*coords, merged_land);
-            merged_landmass.plugins.insert(*coords, landmass.plugin.clone());
+            merged_landmass
+                .plugins
+                .insert(*coords, landmass.plugin.clone());
         }
     }
 

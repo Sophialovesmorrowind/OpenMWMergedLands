@@ -15,11 +15,11 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tes3::esp::{
     FixedString, Header, Landscape, LandscapeFlags, Plugin, TES3Object, TextureIndices,
     VertexColors, VertexNormals, WorldMapData,
 };
-use time::format_description;
 
 /// Converts a [LandscapeDiff] to a [Landscape].
 /// The [RemappedTextures] is used to update any texture indices.
@@ -218,12 +218,9 @@ pub fn save_plugin(
         trace!("Master  | {:>4} | {:<50} | {:>10}", idx, master.0, master.1);
     }
 
-    let time_format =
-        format_description::parse("[year]-[month]-[day] [hour]:[minute]").expect("safe");
-
-    let generated_time = time::OffsetDateTime::now_utc()
-        .format(&time_format)
-        .map(|timestamp| format!("{timestamp} UTC"))
+    let generated_time = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| format!("{} UTC", duration.as_secs()))
         .unwrap_or_else(|_| "unknown".into());
 
     let description = format!(

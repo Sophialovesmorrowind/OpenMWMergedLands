@@ -464,7 +464,6 @@ dependencies = [
  "serde",
  "simplelog",
  "tes3",
- "time",
  "toml",
  "wild",
 ]

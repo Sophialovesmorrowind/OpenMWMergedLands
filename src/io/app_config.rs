@@ -48,8 +48,8 @@ mod tests {
 
     #[test]
     fn output_file_dir_resolves_relative_paths_against_merged_lands_dir() {
-        let config: MergedLandsConfig = toml::from_str("output_file_dir = \"Merged Output\"")
-            .expect("config should parse");
+        let config: MergedLandsConfig =
+            toml::from_str("output_file_dir = \"Merged Output\"").expect("config should parse");
 
         let resolved = config
             .output_file_dir(Path::new("/tmp/merged_lands"))
@@ -60,8 +60,8 @@ mod tests {
 
     #[test]
     fn output_file_dir_keeps_absolute_paths() {
-        let config: MergedLandsConfig = toml::from_str("output_file_dir = \"/var/tmp/out\"")
-            .expect("config should parse");
+        let config: MergedLandsConfig =
+            toml::from_str("output_file_dir = \"/var/tmp/out\"").expect("config should parse");
 
         let resolved = config
             .output_file_dir(Path::new("/tmp/ignored"))

@@ -132,7 +132,11 @@ mod tests {
 
     #[test]
     fn merge_cells_applies_master_then_plugin_in_order() {
-        let master = parsed_plugin("master.esm", vec![cell_at(10, 20, "OldCell")], MetaType::Auto);
+        let master = parsed_plugin(
+            "master.esm",
+            vec![cell_at(10, 20, "OldCell")],
+            MetaType::Auto,
+        );
         let plugin = parsed_plugin("mod.esp", vec![cell_at(10, 20, "NewCell")], MetaType::Auto);
 
         let parsed_plugins = ParsedPlugins {
@@ -179,7 +183,9 @@ mod tests {
         };
 
         let cells = merge_cells(&parsed_plugins);
-        let merged = cells.get(&Vec2::new(3, 4)).expect("merged cell should exist");
+        let merged = cells
+            .get(&Vec2::new(3, 4))
+            .expect("merged cell should exist");
 
         assert_eq!(merged.plugins.len(), 1);
         assert_eq!(merged.plugins[0].name, "b.esp");

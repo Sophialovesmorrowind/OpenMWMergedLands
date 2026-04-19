@@ -83,16 +83,11 @@ pub fn clean_landmass_diff(
             // plugin-like LAND source for this specific cell, not "exactly one contributor".
             // `land.plugins` is already ordered by merge order for this cell, so the last
             // plugin-like entry with a LAND diff at `coords` is the correct comparison target.
-            let Some(modded_landmass_land) = land
-                .plugins
-                .iter()
-                .rev()
-                .find_map(|(plugin, _)| {
-                    modded_landmasses_map
-                        .get(&plugin.name)
-                        .and_then(|modded_landmass| modded_landmass.land.get(coords))
-                })
-            else {
+            let Some(modded_landmass_land) = land.plugins.iter().rev().find_map(|(plugin, _)| {
+                modded_landmasses_map
+                    .get(&plugin.name)
+                    .and_then(|modded_landmass| modded_landmass.land.get(coords))
+            }) else {
                 continue;
             };
 

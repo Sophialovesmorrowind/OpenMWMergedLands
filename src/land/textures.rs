@@ -125,7 +125,6 @@ impl RemappedTextures {
             self.inner.get(&index).cloned()
         }
     }
-
 }
 
 /// A [LandscapeTexture] and the [ParsedPlugin] that last added or modified it.
@@ -174,7 +173,9 @@ fn texture_index(texture: &LandscapeTexture) -> IndexLTEX {
 
 impl KnownTextures {
     pub fn new() -> KnownTextures {
-        Self { inner: Default::default() }
+        Self {
+            inner: Default::default(),
+        }
     }
 
     /// Returns the [KnownTexture] values sorted by [KnownTexture::index].
