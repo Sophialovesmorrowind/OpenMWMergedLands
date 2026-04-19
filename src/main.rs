@@ -102,10 +102,7 @@ mod cli {
     use anyhow::{anyhow, Context, Result};
     use clap::{AppSettings, ArgEnum, Parser};
     use log::LevelFilter;
-    use shadow_rs::shadow;
     use std::path::PathBuf;
-
-    shadow!(build);
 
     #[derive(Copy, PartialEq, Eq, Debug, Hash, Clone, ArgEnum)]
     pub enum CliLevelFilter {
@@ -139,7 +136,7 @@ mod cli {
     #[derive(Parser, Debug)]
     #[clap(author = "DVD")]
     #[clap(about = "Merges lands.")]
-    #[clap(version = build::CLAP_LONG_VERSION)]
+    #[clap(version)]
     #[clap(long_about = None)] // Read from `Cargo.toml`
     #[clap(global_setting(AppSettings::DeriveDisplayOrder))]
     pub struct Cli {

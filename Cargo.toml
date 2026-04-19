@@ -3,17 +3,11 @@ name = "merged_lands"
 version = "0.1.4"
 edition = "2021"
 rust-version = "1.88.0"
-build = "build.rs"
-
-[build-dependencies]
-# Build metadata.
-shadow-rs = "0.16.1"
 
 [dependencies]
 # Command line interface.
 clap = { version = "3.2.16", features = ["derive"] }
 wild = "2.0.4"
-shadow-rs = "0.16.1"
 
 # Serialization for meta files to fine tune merge on each plugin.
 serde = { version = "1.0.139", features = ["derive"] }
@@ -49,11 +43,12 @@ filesize = "0.2.0"  # For byte size used in ESP dependencies.
 filetime = "0.2.17" # For last modified time used in sorting.
 
 # For producing images of terrain.
-image = "0.24.3"
+image = { version = "0.24.3", default-features = false, features = ["png"] }
 
 # Parsing and writing ESPs.
 [dependencies.tes3]
 #path = "../tes3"
 git = "https://github.com/Greatness7/tes3"
+rev = "c5dd8d261372b4d1677ae9ee3aba13442820e907"
 default-features = false
 features = ["esp"]
