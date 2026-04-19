@@ -3,11 +3,9 @@ use crate::land::landscape_diff::LandscapeDiff;
 use crate::land::terrain_map::Vec2;
 use crate::merge::relative_terrain_map::RelativeTerrainMap;
 use crate::LandmassDiff;
-use hashbrown::HashSet;
-use itertools::Itertools;
 use log::{debug, trace};
 use std::cmp::Ordering;
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 
 /// Calculates new coordinates by adding the `offset` to the `coords`.
 fn coords_with_offset(coords: Vec2<i32>, offset: [i32; 2]) -> Vec2<i32> {
@@ -206,7 +204,8 @@ pub fn repair_landmass_seams(merged: &mut LandmassDiff) -> usize {
 
     let mut num_seams_repaired = 0;
 
-    for coords in merged.sorted().map(|pair| *pair.0).collect_vec() {
+    let coords_to_visit: Vec<_> = merged.sorted().into_iter().map(|pair| *pair.0).collect();
+    for coords in coords_to_visit {
         repair_corner_seams(merged, coords, &mut num_seams_repaired);
         push_back_neighbors(&mut possible_seams, &mut visited, coords);
     }
@@ -242,19 +241,22 @@ pub fn repair_landmass_seams(merged: &mut LandmassDiff) -> usize {
     while !possible_seams.is_empty() {
         let next = possible_seams.pop_front().expect("safe");
 
-        let Some(mut lands) = merged.land.get_many_mut([&next.0, &next.1]) else {
+        let Some(mut rhs) = merged.land.remove(&next.1) else {
             continue;
         };
 
-        let (lhs, rhs) = lands.split_at_mut(1);
-        let lhs = &mut lhs[0];
-        let rhs = &mut rhs[0];
+        let Some(lhs) = merged.land.get_mut(&next.0) else {
+            merged.land.insert(next.1, rhs);
+            continue;
+        };
 
         let Some(lhs_height_map) = lhs.height_map.as_mut() else {
+            merged.land.insert(next.1, rhs);
             continue;
         };
 
         let Some(rhs_height_map) = rhs.height_map.as_mut() else {
+            merged.land.insert(next.1, rhs);
             continue;
         };
 
@@ -304,11 +306,15 @@ pub fn repair_landmass_seams(merged: &mut LandmassDiff) -> usize {
             let average = sum / seam_size;
             repaired.insert((next, seam_size, max_delta, min_delta, average));
         }
+
+        merged.land.insert(next.1, rhs);
     }
 
     if num_seams_repaired > 0 {
         debug!("Repaired {} seams", num_seams_repaired);
-        for seam in repaired.iter().sorted_by_key(|a| std::cmp::Reverse(a.1)) {
+        let mut repaired: Vec<_> = repaired.iter().collect();
+        repaired.sort_by_key(|a| std::cmp::Reverse(a.1));
+        for seam in repaired {
             trace!(
                 " - ({:>4}, {:>4}) | ({:>4}, {:>4}) | # of Seams = {:<3} | Max = {:<3} | Min = {:<3} | Avg = {}",
                 seam.0 .0.x,

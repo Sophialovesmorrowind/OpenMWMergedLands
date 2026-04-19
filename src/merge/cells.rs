@@ -1,7 +1,7 @@
 use crate::io::meta_schema::MetaType;
 use crate::io::parsed_plugins::{ParsedPlugin, ParsedPlugins};
 use crate::land::terrain_map::Vec2;
-use hashbrown::HashMap;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tes3::esp::Cell;
 

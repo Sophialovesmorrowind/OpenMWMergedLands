@@ -5,13 +5,13 @@ use crate::land::terrain_map::{Vec2, Vec3};
 use crate::merge::conflict::{ConflictResolver, ConflictType};
 use crate::merge::relative_terrain_map::RelativeTerrainMap;
 use crate::merge::relative_to::RelativeTo;
+use crate::term_style::bold_red;
 use crate::LandmassDiff;
 use anyhow::{anyhow, Context, Result};
-use hashbrown::HashSet;
 use image::imageops::FilterType;
 use image::{DynamicImage, ImageBuffer, Luma, Pixel, Rgb};
 use log::{error, trace};
-use owo_colors::OwoColorize;
+use std::collections::HashSet;
 use std::fs;
 use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
@@ -92,7 +92,7 @@ impl<const T: usize> SaveToImage for RelativeTerrainMap<Vec3<u8>, T> {
         }
 
         save_resized_image::<T, _>(img, file_path, DEFAULT_SCALE_FACTOR)
-            .map_err(|e| error!("{}", e.bold().bright_red()))
+            .map_err(|e| error!("{}", bold_red(format!("{e}"))))
             .ok();
     }
 }
@@ -127,7 +127,7 @@ impl<const T: usize> SaveToImage for RelativeTerrainMap<u8, T> {
         }
 
         save_resized_image::<T, _>(img, file_path, DEFAULT_SCALE_FACTOR)
-            .map_err(|e| error!("{}", e.bold().bright_red()))
+            .map_err(|e| error!("{}", bold_red(format!("{e}"))))
             .ok();
     }
 }
@@ -154,7 +154,7 @@ impl<const T: usize> SaveToImage for RelativeTerrainMap<i32, T> {
         }
 
         save_resized_image::<T, _>(img, file_path, DEFAULT_SCALE_FACTOR)
-            .map_err(|e| error!("{}", e.bold().bright_red()))
+            .map_err(|e| error!("{}", bold_red(format!("{e}"))))
             .ok();
     }
 }
@@ -253,7 +253,7 @@ pub fn save_image<U: RelativeTo + ConflictResolver, const T: usize>(
         if should_skip {
             "".to_string()
         } else {
-            " *".bold().bright_red().to_string()
+            bold_red(" *")
         }
     );
 
@@ -276,7 +276,7 @@ pub fn save_image<U: RelativeTo + ConflictResolver, const T: usize>(
         .collect();
 
         save_resized_image::<T, _>(diff_img, &file_path, DEFAULT_SCALE_FACTOR)
-            .map_err(|e| error!("{}", e.bold().bright_red()))
+            .map_err(|e| error!("{}", bold_red(format!("{e}"))))
             .ok();
     }
 

@@ -16,16 +16,15 @@ use crate::merge::relative_terrain_map::{IsModified, RelativeTerrainMap};
 use crate::repair::cleaning::{clean_known_textures, clean_landmass_diff};
 use crate::repair::debugging::add_debug_vertex_colors_to_landmass;
 use crate::repair::seam_detection::repair_landmass_seams;
+use crate::term_style::{bold, bold_red};
 use anyhow::{anyhow, Context, Result};
-use hashbrown::HashMap;
-use itertools::Itertools;
 use log::{debug, error, info, trace, warn};
-use owo_colors::OwoColorize;
 use simplelog::{
     ColorChoice, CombinedLogger, ConfigBuilder, LevelFilter, LevelPadding, TermLogger,
     TerminalMode, WriteLogger,
 };
 use std::any::Any;
+use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::Read;
 use std::path::PathBuf;
@@ -38,6 +37,7 @@ mod io;
 mod land;
 mod merge;
 mod repair;
+mod term_style;
 
 /// A [Landmass] represents a collection of [Landscape] and the associated [ParsedPlugin].
 pub struct Landmass {
@@ -60,9 +60,11 @@ impl Landmass {
         self.land.insert(coords, land.clone());
     }
 
-    /// Returns an [Iterator] over the [Landscape] ordered by `x` and `y` coordinates.
-    fn sorted(&self) -> impl Iterator<Item = (&Vec2<i32>, &Landscape)> {
-        self.land.iter().sorted_by_key(|f| (f.0.x, f.0.y))
+    /// Returns the [Landscape] entries ordered by `x` and `y` coordinates.
+    fn sorted(&self) -> Vec<(&Vec2<i32>, &Landscape)> {
+        let mut entries: Vec<_> = self.land.iter().collect();
+        entries.sort_by_key(|f| (f.0.x, f.0.y));
+        entries
     }
 }
 
@@ -90,9 +92,11 @@ impl LandmassDiff {
         }
     }
 
-    /// Returns an [Iterator] over the [LandscapeDiff] ordered by `x` and `y` coordinates.
-    fn sorted(&self) -> impl Iterator<Item = (&Vec2<i32>, &LandscapeDiff)> {
-        self.land.iter().sorted_by_key(|f| (f.0.x, f.0.y))
+    /// Returns the [LandscapeDiff] entries ordered by `x` and `y` coordinates.
+    fn sorted(&self) -> Vec<(&Vec2<i32>, &LandscapeDiff)> {
+        let mut entries: Vec<_> = self.land.iter().collect();
+        entries.sort_by_key(|f| (f.0.x, f.0.y));
+        entries
     }
 }
 
@@ -369,20 +373,14 @@ fn main() -> Result<()> {
     match work_thread.join() {
         Ok(Ok(())) => {}
         Ok(Err(e)) => {
-            error!(
-                "{}",
-                format!("An unexpected error occurred: {:?}", e.bold()).bright_red()
-            );
+            error!("{}", bold_red(format!("An unexpected error occurred: {:?}", bold(format!("{e:?}")))));
 
             wait_for_user_exit(wait_for_exit);
             exit(1);
         }
         Err(panic) => {
             let message = format_thread_panic(panic);
-            error!(
-                "{}",
-                format!("Worker thread panicked: {}", message.bold()).bright_red()
-            );
+            error!("{}", bold_red(format!("Worker thread panicked: {}", bold(message))));
 
             wait_for_user_exit(wait_for_exit);
             exit(1);
@@ -691,15 +689,15 @@ fn init_log(cli: &Cli) -> bool {
             CombinedLogger::init(vec![term_logger]).expect("safe");
             error!(
                 "{} {}",
-                format!(
+                bold_red(format!(
                     "Failed to create log file at {}",
-                    get_log_file_path()
+                    bold(
+                        get_log_file_path()
                         .unwrap_or_else(|_| PathBuf::from(&cli.log_file))
                         .to_string_lossy()
-                        .bold()
-                )
-                .bright_red(),
-                format!("due to: {:?}", e.bold()).bright_red()
+                    )
+                )),
+                bold_red(format!("due to: {:?}", bold(format!("{e:?}"))))
             );
 
             false
@@ -962,7 +960,7 @@ fn create_reference_and_modded_landmasses(
                 try_create_landmass(plugin, known_textures)
                     .map(|landmass| find_landmass_diff(&landmass, &reference_landmass))
             })
-            .collect_vec()
+            .collect()
     };
 
     (Arc::new(reference_landmass), modded_landmasses)

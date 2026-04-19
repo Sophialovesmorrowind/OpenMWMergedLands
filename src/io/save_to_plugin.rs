@@ -10,11 +10,8 @@ use crate::merge::cells::ModifiedCell;
 use crate::merge::relative_terrain_map::{recompute_vertex_normals, DefaultRelativeTerrainMap};
 use crate::{Landmass, LandmassDiff, Vec2};
 use anyhow::{anyhow, Context, Result};
-use filesize::file_real_size;
-use filetime::FileTime;
-use hashbrown::{HashMap, HashSet};
-use itertools::Itertools;
 use log::{debug, trace, warn};
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -139,7 +136,7 @@ pub fn convert_landmass_diff_to_landmass(
 fn to_master_record(data_dirs: &DataDirs, name: String) -> (String, u64) {
     let file_size = data_dirs
         .resolve(&name)
-        .and_then(|p| file_real_size(p).ok())
+        .and_then(|path| fs::metadata(path).ok().map(|metadata| metadata.len()))
         .unwrap_or(0);
     (name, file_size)
 }
@@ -161,7 +158,7 @@ pub fn save_plugin(
 
     debug!("Determining plugin dependencies");
 
-    let masters = {
+    let masters: Option<Vec<(String, u64)>> = {
         let mut dependencies = HashSet::new();
 
         let mut add_dependency =
@@ -204,7 +201,7 @@ pub fn save_plugin(
             }
         }
 
-        let mut masters = dependencies.drain().collect_vec();
+        let mut masters: Vec<_> = dependencies.drain().collect();
 
         sort_plugins(data_dirs, &mut masters, sort_order)
             .with_context(|| anyhow!("Unknown load order for {} dependencies", output_name))?;
@@ -213,7 +210,7 @@ pub fn save_plugin(
             masters
                 .into_iter()
                 .map(|plugin| to_master_record(data_dirs, plugin))
-                .collect_vec(),
+                .collect(),
         )
     };
 
@@ -290,10 +287,6 @@ pub fn save_plugin(
         .with_context(|| anyhow!("Unable to save plugin meta {}", meta_name))?;
 
     let merged_filepath: PathBuf = [output_file_dir, Path::new(output_name)].iter().collect();
-    let last_modified_time = merged_filepath
-        .metadata()
-        .map(|metadata| FileTime::from_last_modification_time(&metadata))
-        .unwrap_or_else(|_| FileTime::now());
 
     trace!("Saving file {}", output_name);
     plugin
@@ -301,10 +294,6 @@ pub fn save_plugin(
         .with_context(|| anyhow!("Unable to save plugin {}", output_name))?;
 
     trace!(" - Description: {}", description);
-
-    trace!("Updating last modified time on {}", output_name);
-    filetime::set_file_mtime(merged_filepath, last_modified_time)
-        .with_context(|| anyhow!("Unable to set last modified date on plugin {}", output_name))?;
 
     Ok(())
 }

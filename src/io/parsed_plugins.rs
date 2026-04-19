@@ -1,12 +1,10 @@
 use crate::cli::SortOrder;
 use crate::io::meta_schema::{PluginMeta, VersionedPluginMeta};
+use crate::term_style::{bold, bold_red, yellow};
 use anyhow::{anyhow, bail, Context, Result};
-use filetime::FileTime;
-use hashbrown::{HashMap, HashSet};
 use log::{debug, error, info, trace, warn};
 use openmw_config::{OpenMWConfiguration, default_data_local_path};
-use owo_colors::OwoColorize;
-use regex::Regex;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::fs::File;
 use std::hash::{Hash, Hasher};
@@ -259,7 +257,7 @@ pub fn sort_plugins(
         })?;
         let last_modified_time = path
             .metadata()
-            .map(|metadata| FileTime::from_last_modification_time(&metadata))
+            .and_then(|metadata| metadata.modified())
             .with_context(|| anyhow!("Unable to read metadata for plugin {}", plugin_name))?;
 
         cached_order.insert(plugin_name.clone(), (!is_esm(plugin_name), last_modified_time));
@@ -360,7 +358,6 @@ fn read_ini_file(data_dirs: &DataDirs, path: &Path) -> Result<Vec<String>> {
     let mut all_plugins = Vec::new();
 
     const QUOTE_CHARS: [char; 2] = ['\'', '"'];
-    let match_game_file = Regex::new(r#"^GameFile(\d+)=(.+)$"#).expect("safe");
 
     let mut is_game_files = false;
     for line in lines
@@ -373,33 +370,44 @@ fn read_ini_file(data_dirs: &DataDirs, path: &Path) -> Result<Vec<String>> {
         } else if line.starts_with('[') {
             is_game_files = false;
         } else if is_game_files {
-            match match_game_file.captures(&line) {
-                None => {
-                    warn!(
-                        "{}",
-                        format!("Found junk in [Game Files] section: {}", line.bold()).yellow()
-                    );
-                }
-                Some(captures) => {
-                    let plugin_name = captures
-                        .get(2)
-                        .expect("safe")
-                        .as_str()
-                        .trim_start_matches(QUOTE_CHARS)
-                        .trim_end_matches(QUOTE_CHARS);
+            let Some((key, value)) = line.split_once('=') else {
+                warn!(
+                    "{}",
+                    yellow(format!("Found junk in [Game Files] section: {}", bold(&line)))
+                );
+                continue;
+            };
 
-                    match data_dirs.resolve(plugin_name) {
-                        Some(_) => all_plugins.push(plugin_name.to_string()),
-                        None => error!(
-                            "{}",
-                            format!(
-                                "Plugin {} does not exist in any configured data directory",
-                                plugin_name.bold()
-                            )
-                            .bright_red()
-                        ),
-                    }
-                }
+            let Some(index) = key.strip_prefix("GameFile") else {
+                warn!(
+                    "{}",
+                    yellow(format!("Found junk in [Game Files] section: {}", bold(&line)))
+                );
+                continue;
+            };
+
+            if index.is_empty() || !index.chars().all(|ch| ch.is_ascii_digit()) {
+                warn!(
+                    "{}",
+                    yellow(format!("Found junk in [Game Files] section: {}", bold(&line)))
+                );
+                continue;
+            }
+
+            let plugin_name = value
+                .trim()
+                .trim_start_matches(QUOTE_CHARS)
+                .trim_end_matches(QUOTE_CHARS);
+
+            match data_dirs.resolve(plugin_name) {
+                Some(_) => all_plugins.push(plugin_name.to_string()),
+                None => error!(
+                    "{}",
+                    bold_red(format!(
+                        "Plugin {} does not exist in any configured data directory",
+                        bold(plugin_name)
+                    ))
+                ),
             }
         }
     }
@@ -490,8 +498,8 @@ impl ParsedPlugins {
                 Err(e) => {
                     error!(
                         "{} {}",
-                        format!("Failed to parse plugin {}", plugin_name.bold()).bright_red(),
-                        format!("due to: {:?}", e.bold()).bright_red()
+                        bold_red(format!("Failed to parse plugin {}", bold(&plugin_name))),
+                        bold_red(format!("due to: {:?}", bold(format!("{e:?}"))))
                     );
                 }
             }
@@ -609,7 +617,7 @@ impl ParsedPlugins {
             Ok(VersionedPluginMeta::Unsupported) => {
                 error!(
                     "{}",
-                    format!("Unsupported plugin meta file {}", meta_file_name.bold()).bright_red()
+                    bold_red(format!("Unsupported plugin meta file {}", bold(&meta_file_name)))
                 );
                 None
             }

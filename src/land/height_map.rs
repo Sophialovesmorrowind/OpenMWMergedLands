@@ -1,8 +1,8 @@
 use crate::land::conversions::landscape_flags;
 use crate::land::grid_access::{GridAccessor2D, Index2D, SquareGridIterator};
 use crate::land::terrain_map::{TerrainMap, Vec3};
+use crate::term_style::yellow;
 use log::warn;
-use owo_colors::OwoColorize;
 use tes3::esp::{Landscape, LandscapeFlags, VertexHeights};
 
 const CELL_SIZE: usize = 65;
@@ -156,12 +156,13 @@ pub fn try_calculate_height_map(land: &Landscape) -> Option<TerrainMap<i32, 65>>
     }
 
     let Some(grid_height) = land.vertex_heights.as_ref().map(calculate_height_map) else {
-        warn!("{}", format!(
-            "({:>4}, {:>4}) {:<15} | missing vertex_heights",
-            land.grid.0,
-            land.grid.1,
-            "height_map"
-        ).yellow());
+        warn!(
+            "{}",
+            yellow(format!(
+                "({:>4}, {:>4}) {:<15} | missing vertex_heights",
+                land.grid.0, land.grid.1, "height_map"
+            ))
+        );
         return None;
     };
 

@@ -2,9 +2,8 @@ use crate::io::parsed_plugins::ParsedPlugin;
 use crate::merge::relative_to::RelativeTo;
 use anyhow::{bail, Error};
 use const_default::ConstDefault;
-use hashbrown::HashMap;
-use itertools::Itertools;
 use log::trace;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tes3::esp::{LandscapeTexture, ObjectFlags};
 
@@ -178,11 +177,11 @@ impl KnownTextures {
         Self { inner: Default::default() }
     }
 
-    /// Returns an [Iterator] over the [KnownTexture] sorted by [KnownTexture::index].
-    pub fn sorted(&self) -> impl Iterator<Item = &KnownTexture> + '_ {
-        self.inner
-            .values()
-            .sorted_by(|a, b| a.index().cmp(&b.index()))
+    /// Returns the [KnownTexture] values sorted by [KnownTexture::index].
+    pub fn sorted(&self) -> Vec<&KnownTexture> {
+        let mut textures: Vec<_> = self.inner.values().collect();
+        textures.sort_by_key(|texture| texture.index());
+        textures
     }
 
     /// Update the [KnownTexture] matching `texture` with changes from [ParsedPlugin] `plugin`.
