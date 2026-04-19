@@ -7,6 +7,7 @@ use crate::merge::relative_terrain_map::RelativeTerrainMap;
 use crate::merge::relative_to::RelativeTo;
 use crate::LandmassDiff;
 use anyhow::{anyhow, Context, Result};
+use hashbrown::HashSet;
 use image::imageops::FilterType;
 use image::{DynamicImage, ImageBuffer, Luma, Pixel, Rgb};
 use log::{error, trace};
@@ -167,6 +168,7 @@ pub fn save_image<U: RelativeTo + ConflictResolver, const T: usize>(
     value: &str,
     lhs: Option<&RelativeTerrainMap<U, T>>,
     rhs: Option<&RelativeTerrainMap<U, T>>,
+    written_merged_images: &mut HashSet<String>,
 ) where
     RelativeTerrainMap<U, T>: SaveToImage,
 {
@@ -280,6 +282,10 @@ pub fn save_image<U: RelativeTo + ConflictResolver, const T: usize>(
 
     {
         let file_name = format!("{}_{}_{}_MERGED.png", value, coords.x, coords.y);
+        if !written_merged_images.insert(file_name.clone()) {
+            return;
+        }
+
         let file_path: PathBuf = [
             merged_lands_dir,
             Path::new("Conflicts"),
@@ -297,6 +303,7 @@ fn save_landscape_images(
     parsed_plugin: &ParsedPlugin,
     reference: &LandscapeDiff,
     plugin: &LandscapeDiff,
+    written_merged_images: &mut HashSet<String>,
 ) {
     save_image(
         merged_lands_dir,
@@ -305,6 +312,7 @@ fn save_landscape_images(
         "height_map",
         reference.height_map.as_ref(),
         plugin.height_map.as_ref(),
+        written_merged_images,
     );
     save_image(
         merged_lands_dir,
@@ -313,6 +321,7 @@ fn save_landscape_images(
         "vertex_normals",
         reference.vertex_normals.as_ref(),
         plugin.vertex_normals.as_ref(),
+        written_merged_images,
     );
     save_image(
         merged_lands_dir,
@@ -321,6 +330,7 @@ fn save_landscape_images(
         "world_map_data",
         reference.world_map_data.as_ref(),
         plugin.world_map_data.as_ref(),
+        written_merged_images,
     );
     save_image(
         merged_lands_dir,
@@ -329,17 +339,28 @@ fn save_landscape_images(
         "vertex_colors",
         reference.vertex_colors.as_ref(),
         plugin.vertex_colors.as_ref(),
+        written_merged_images,
     );
 }
 
-/// Saves images of conflicts between [LandmassDiff] `reference` and `plugin`.
+/// Saves images of conflicts between [LandmassDiff] `reference` and all modded landmasses.
 pub fn save_landmass_images(
     merged_lands_dir: &Path,
     reference: &LandmassDiff,
-    plugin: &LandmassDiff,
+    modded_landmasses: &[LandmassDiff],
 ) {
-    for (coords, land) in plugin.sorted() {
-        let merged_land = reference.land.get(coords).expect("safe");
-        save_landscape_images(merged_lands_dir, &plugin.plugin, merged_land, land);
+    let mut written_merged_images = HashSet::new();
+
+    for plugin in modded_landmasses {
+        for (coords, land) in plugin.sorted() {
+            let merged_land = reference.land.get(coords).expect("safe");
+            save_landscape_images(
+                merged_lands_dir,
+                &plugin.plugin,
+                merged_land,
+                land,
+                &mut written_merged_images,
+            );
+        }
     }
 }

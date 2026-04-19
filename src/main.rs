@@ -549,9 +549,7 @@ fn merge_all(cli: &Cli) -> Result<()> {
     info!(":: Summarizing Conflicts ::");
 
     let merged_lands_dir = cli.merged_lands_dir()?;
-    for modded_landmass in modded_landmasses.iter() {
-        save_landmass_images(&merged_lands_dir, &merged_lands, modded_landmass);
-    }
+    save_landmass_images(&merged_lands_dir, &merged_lands, &modded_landmasses);
     debug!("Saved conflict summary images in {:?}", phase_start.elapsed());
     phase_start = Instant::now();
 

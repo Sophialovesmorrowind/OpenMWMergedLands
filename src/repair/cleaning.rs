@@ -2,7 +2,6 @@ use crate::io::parsed_plugins::{is_esp, ParsedPlugin, ParsedPlugins};
 use crate::land::grid_access::SquareGridIterator;
 use crate::land::landscape_diff::LandscapeDiff;
 use crate::land::textures::{KnownTextures, RemappedTextures};
-use crate::merge::conflict::{ConflictResolver, ConflictType};
 use crate::merge::relative_terrain_map::RelativeTerrainMap;
 use crate::merge::relative_to::RelativeTo;
 use crate::repair::seam_detection::repair_landmass_seams;
@@ -12,7 +11,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tes3::esp::LandscapeTexture;
 
-pub fn has_difference<U: RelativeTo + ConflictResolver, const T: usize>(
+pub fn has_difference<U: RelativeTo, const T: usize>(
     lhs: Option<&RelativeTerrainMap<U, T>>,
     rhs: Option<&RelativeTerrainMap<U, T>>,
 ) -> bool {
@@ -24,19 +23,11 @@ pub fn has_difference<U: RelativeTo + ConflictResolver, const T: usize>(
         return false;
     };
 
-    let params = Default::default();
-
     for coords in lhs.iter_grid() {
         let actual = lhs.get_value(coords);
         let expected = rhs.get_value(coords);
-        match actual.average(expected, &params) {
-            None => {}
-            Some(ConflictType::Minor(_)) => {
-                return true;
-            }
-            Some(ConflictType::Major(_)) => {
-                return true;
-            }
+        if actual != expected {
+            return true;
         }
     }
 
