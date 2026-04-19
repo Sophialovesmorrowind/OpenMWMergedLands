@@ -147,3 +147,69 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::apply_merge_strategy;
+    use crate::io::meta_schema::ConflictStrategy;
+    use crate::io::parsed_plugins::ParsedPlugin;
+    use crate::land::grid_access::Index2D;
+    use crate::land::terrain_map::Vec2;
+    use crate::merge::relative_terrain_map::RelativeTerrainMap;
+
+    #[test]
+    fn merge_strategy_returns_none_when_both_inputs_are_none() {
+        let plugin = ParsedPlugin::empty("plugin.esp");
+        let result = apply_merge_strategy::<i32, 2>(
+            Vec2::new(0, 0),
+            &plugin,
+            "height_map",
+            None,
+            None,
+            ConflictStrategy::Auto,
+        );
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn merge_strategy_returns_existing_old_when_new_is_missing() {
+        let plugin = ParsedPlugin::empty("plugin.esp");
+        let mut old = RelativeTerrainMap::<i32, 2>::empty([[0; 2]; 2]);
+        old.set_value(Index2D::new(0, 0), 7);
+
+        let result = apply_merge_strategy(
+            Vec2::new(0, 0),
+            &plugin,
+            "height_map",
+            Some(&old),
+            None,
+            ConflictStrategy::Auto,
+        )
+        .expect("result should exist");
+
+        assert_eq!(result.get_value(Index2D::new(0, 0)), 7);
+    }
+
+    #[test]
+    fn texture_indices_auto_uses_overwrite_behavior() {
+        let plugin = ParsedPlugin::empty("plugin.esp");
+        let mut old = RelativeTerrainMap::<u16, 2>::empty([[0; 2]; 2]);
+        old.set_value(Index2D::new(1, 1), 5);
+
+        let mut new = RelativeTerrainMap::<u16, 2>::empty([[0; 2]; 2]);
+        new.set_value(Index2D::new(1, 1), 9);
+
+        let result = apply_merge_strategy(
+            Vec2::new(0, 0),
+            &plugin,
+            "texture_indices",
+            Some(&old),
+            Some(&new),
+            ConflictStrategy::Auto,
+        )
+        .expect("result should exist");
+
+        assert_eq!(result.get_value(Index2D::new(1, 1)), 9);
+    }
+}

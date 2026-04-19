@@ -203,3 +203,34 @@ pub fn clean_known_textures(
 
     remapped_textures
 }
+
+#[cfg(test)]
+mod tests {
+    use super::has_difference;
+    use crate::land::grid_access::Index2D;
+    use crate::merge::relative_terrain_map::RelativeTerrainMap;
+
+    #[test]
+    fn has_difference_is_false_when_maps_are_identical() {
+        let lhs = RelativeTerrainMap::<i32, 2>::empty([[1, 2], [3, 4]]);
+        let rhs = RelativeTerrainMap::<i32, 2>::empty([[1, 2], [3, 4]]);
+
+        assert!(!has_difference(Some(&lhs), Some(&rhs)));
+    }
+
+    #[test]
+    fn has_difference_is_true_when_any_cell_differs() {
+        let mut lhs = RelativeTerrainMap::<i32, 2>::empty([[1, 2], [3, 4]]);
+        let rhs = RelativeTerrainMap::<i32, 2>::empty([[1, 2], [3, 4]]);
+
+        lhs.set_value(Index2D::new(1, 0), 20);
+        assert!(has_difference(Some(&lhs), Some(&rhs)));
+    }
+
+    #[test]
+    fn has_difference_returns_false_when_missing_input_map() {
+        let lhs = RelativeTerrainMap::<i32, 2>::empty([[1, 2], [3, 4]]);
+        assert!(!has_difference(Some(&lhs), None));
+        assert!(!has_difference::<i32, 2>(None, Some(&lhs)));
+    }
+}

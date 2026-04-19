@@ -642,7 +642,30 @@ impl ParsedPlugins {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_esm, is_esp, meta_name};
+    use super::{is_esm, is_esp, meta_name, sort_plugins, DataDirs};
+    use crate::cli::SortOrder;
+    use std::fs;
+    use std::path::Path;
+    use std::thread;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    fn create_temp_data_dir() -> std::path::PathBuf {
+        let unique = format!(
+            "merged_lands_test_{}_{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("clock before unix epoch")
+                .as_nanos()
+        );
+        let dir = std::env::temp_dir().join(unique);
+        fs::create_dir_all(&dir).expect("create temp dir");
+        dir
+    }
+
+    fn create_empty_file(path: &Path) {
+        fs::write(path, []).expect("write empty file");
+    }
 
     #[test]
     fn extension_helpers_are_case_insensitive() {
@@ -661,5 +684,61 @@ mod tests {
             meta_name("Data Files/Plugin.esp"),
             "Plugin.mergedlands.toml"
         );
+    }
+
+    #[test]
+    fn sort_plugins_none_keeps_order() {
+        let data_dir = create_temp_data_dir();
+        create_empty_file(&data_dir.join("a.esp"));
+        create_empty_file(&data_dir.join("b.esp"));
+
+        let mut plugins = vec!["b.esp".to_string(), "a.esp".to_string()];
+        sort_plugins(
+            &DataDirs::single(data_dir.clone()),
+            &mut plugins,
+            SortOrder::None,
+        )
+        .expect("sort should succeed");
+
+        assert_eq!(plugins, vec!["b.esp", "a.esp"]);
+        fs::remove_dir_all(data_dir).expect("cleanup temp dir");
+    }
+
+    #[test]
+    fn sort_plugins_prioritizes_esm_over_esp() {
+        let data_dir = create_temp_data_dir();
+        create_empty_file(&data_dir.join("plugin.esp"));
+        thread::sleep(Duration::from_millis(10));
+        create_empty_file(&data_dir.join("master.esm"));
+
+        let mut plugins = vec!["plugin.esp".to_string(), "master.esm".to_string()];
+        sort_plugins(
+            &DataDirs::single(data_dir.clone()),
+            &mut plugins,
+            SortOrder::Default,
+        )
+        .expect("sort should succeed");
+
+        assert_eq!(plugins, vec!["master.esm", "plugin.esp"]);
+        fs::remove_dir_all(data_dir).expect("cleanup temp dir");
+    }
+
+    #[test]
+    fn sort_plugins_orders_by_mtime_within_same_extension() {
+        let data_dir = create_temp_data_dir();
+        create_empty_file(&data_dir.join("older.esp"));
+        thread::sleep(Duration::from_millis(10));
+        create_empty_file(&data_dir.join("newer.esp"));
+
+        let mut plugins = vec!["newer.esp".to_string(), "older.esp".to_string()];
+        sort_plugins(
+            &DataDirs::single(data_dir.clone()),
+            &mut plugins,
+            SortOrder::Default,
+        )
+        .expect("sort should succeed");
+
+        assert_eq!(plugins, vec!["older.esp", "newer.esp"]);
+        fs::remove_dir_all(data_dir).expect("cleanup temp dir");
     }
 }
