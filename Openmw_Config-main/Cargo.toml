@@ -1,0 +1,23 @@
+[package]
+name = "openmw-config"
+description = "A library for interacting with the Openmw Configuration system."
+version = "1.0.0"
+authors = ["Dave Corley (S3kshun8) <corleycomputerrepair@protonmail.ch>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/DreamWeave-MP/Openmw_Config"
+readme = "README.md"
+keywords = ["openmw", "config", "parsing", "gamedev"]
+categories = ["config", "game-engines", "parsing"]
+edition = "2024"
+rust-version = "1.88"
+
+[dependencies]
+dirs = "6.0.0"
+shellexpand = "3.1.1"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "parsing"
+harness = false
