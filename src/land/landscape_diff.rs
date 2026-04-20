@@ -1,3 +1,4 @@
+use crate::ParsedPlugin;
 use crate::land::conversions::{
     coordinates, landscape_flags, texture_indices, vertex_colors, vertex_normals, world_map_data,
 };
@@ -7,7 +8,6 @@ use crate::land::terrain_map::{LandData, TerrainMap, Vec2, Vec3};
 use crate::land::textures::IndexVTEX;
 use crate::merge::relative_terrain_map::{IsModified, OptionalTerrainMap, RelativeTerrainMap};
 use crate::merge::relative_to::RelativeTo;
-use crate::ParsedPlugin;
 use std::sync::Arc;
 use tes3::esp::{Landscape, LandscapeFlags, ObjectFlags};
 

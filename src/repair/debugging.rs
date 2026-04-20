@@ -1,10 +1,10 @@
+use crate::LandmassDiff;
 use crate::land::grid_access::SquareGridIterator;
 use crate::land::landscape_diff::LandscapeDiff;
 use crate::land::terrain_map::Vec3;
 use crate::merge::conflict::{ConflictResolver, ConflictType};
 use crate::merge::relative_terrain_map::RelativeTerrainMap;
 use crate::merge::relative_to::RelativeTo;
-use crate::LandmassDiff;
 
 const MAJOR_COLOR: Vec3<u8> = Vec3::new(255u8, 0, 0);
 const MINOR_COLOR: Vec3<u8> = Vec3::new(255u8, 255u8, 0);

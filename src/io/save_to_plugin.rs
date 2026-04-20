@@ -1,15 +1,15 @@
 use crate::cli::SortOrder;
 use crate::io::meta_schema::{MergeSettings, MetaType, PluginMeta, VersionedPluginMeta};
-use crate::io::parsed_plugins::{meta_name, sort_plugins, DataDirs, ParsedPlugin, ParsedPlugins};
+use crate::io::parsed_plugins::{DataDirs, ParsedPlugin, ParsedPlugins, meta_name, sort_plugins};
 use crate::land::conversions::convert_terrain_map;
 use crate::land::height_map::calculate_vertex_heights_tes3;
 use crate::land::landscape_diff::LandscapeDiff;
 use crate::land::terrain_map::Vec3;
 use crate::land::textures::{IndexVTEX, KnownTextures, RemappedTextures};
 use crate::merge::cells::ModifiedCell;
-use crate::merge::relative_terrain_map::{recompute_vertex_normals, DefaultRelativeTerrainMap};
+use crate::merge::relative_terrain_map::{DefaultRelativeTerrainMap, recompute_vertex_normals};
 use crate::{Landmass, LandmassDiff, Vec2};
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use log::{debug, trace, warn};
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -37,10 +37,7 @@ fn convert_landscape_diff_to_landscape(
 
         trace!(
             "({:>4}, {:>4}) | {:<50} | {:?}",
-            landscape.coords.x,
-            landscape.coords.y,
-            plugin.name,
-            modified_data
+            landscape.coords.x, landscape.coords.y, plugin.name, modified_data
         );
     }
 
@@ -96,7 +93,8 @@ fn convert_landscape_diff_to_landscape(
                 landscape.coords.x,
                 landscape.coords.y,
                 invalid_texture_indices,
-                first_invalid_texture_index.expect("invalid index count implies first invalid index")
+                first_invalid_texture_index
+                    .expect("invalid index count implies first invalid index")
             );
         }
 
@@ -468,9 +466,11 @@ mod tests {
         assert_eq!(indices.data[1][1], 0);
         assert!(converted.vertex_heights.is_some());
         assert!(converted.vertex_normals.is_some());
-        assert!(converted
-            .landscape_flags
-            .contains(LandscapeFlags::USES_VERTEX_HEIGHTS_AND_NORMALS));
+        assert!(
+            converted
+                .landscape_flags
+                .contains(LandscapeFlags::USES_VERTEX_HEIGHTS_AND_NORMALS)
+        );
     }
 
     #[test]

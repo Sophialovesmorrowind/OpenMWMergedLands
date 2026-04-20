@@ -1,6 +1,6 @@
 use crate::io::parsed_plugins::ParsedPlugin;
 use crate::merge::relative_to::RelativeTo;
-use anyhow::{bail, Error};
+use anyhow::{Error, bail};
 use const_default::ConstDefault;
 use log::trace;
 use std::collections::HashMap;

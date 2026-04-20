@@ -1,8 +1,8 @@
+use crate::LandmassDiff;
 use crate::land::grid_access::Index2D;
 use crate::land::landscape_diff::LandscapeDiff;
 use crate::land::terrain_map::Vec2;
 use crate::merge::relative_terrain_map::RelativeTerrainMap;
-use crate::LandmassDiff;
 use log::{debug, trace};
 use std::cmp::Ordering;
 use std::collections::{HashSet, VecDeque};
@@ -317,14 +317,7 @@ pub fn repair_landmass_seams(merged: &mut LandmassDiff) -> usize {
         for seam in repaired {
             trace!(
                 " - ({:>4}, {:>4}) | ({:>4}, {:>4}) | # of Seams = {:<3} | Max = {:<3} | Min = {:<3} | Avg = {}",
-                seam.0 .0.x,
-                seam.0 .0.y,
-                seam.0 .1.x,
-                seam.0 .1.y,
-                seam.1,
-                seam.2,
-                seam.3,
-                seam.4
+                seam.0.0.x, seam.0.0.y, seam.0.1.x, seam.0.1.y, seam.1, seam.2, seam.3, seam.4
             );
         }
     }
@@ -346,12 +339,12 @@ pub fn repair_landmass_seams(merged: &mut LandmassDiff) -> usize {
 #[cfg(test)]
 mod tests {
     use super::repair_landmass_seams;
+    use crate::LandmassDiff;
     use crate::io::parsed_plugins::ParsedPlugin;
     use crate::land::grid_access::Index2D;
     use crate::land::landscape_diff::LandscapeDiff;
     use crate::land::terrain_map::Vec2;
     use crate::merge::relative_terrain_map::RelativeTerrainMap;
-    use crate::LandmassDiff;
     use std::collections::HashMap;
     use std::sync::Arc;
     use tes3::esp::ObjectFlags;

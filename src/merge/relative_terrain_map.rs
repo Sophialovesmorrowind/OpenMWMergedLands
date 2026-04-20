@@ -199,7 +199,7 @@ pub fn recompute_vertex_normals(
 
 #[cfg(test)]
 mod tests {
-    use super::{recompute_vertex_normals, IsModified, OptionalTerrainMap, RelativeTerrainMap};
+    use super::{IsModified, OptionalTerrainMap, RelativeTerrainMap, recompute_vertex_normals};
     use crate::land::grid_access::{GridAccessor2D, Index2D};
     use crate::land::terrain_map::{TerrainMap, Vec3};
 

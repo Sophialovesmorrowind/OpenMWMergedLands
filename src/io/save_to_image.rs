@@ -1,3 +1,4 @@
+use crate::LandmassDiff;
 use crate::io::parsed_plugins::ParsedPlugin;
 use crate::land::grid_access::{GridAccessor2D, Index2D, SquareGridIterator};
 use crate::land::landscape_diff::LandscapeDiff;
@@ -6,8 +7,7 @@ use crate::merge::conflict::{ConflictResolver, ConflictType};
 use crate::merge::relative_terrain_map::RelativeTerrainMap;
 use crate::merge::relative_to::RelativeTo;
 use crate::term_style::bold_red;
-use crate::LandmassDiff;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use image::imageops::FilterType;
 use image::{DynamicImage, ImageBuffer, Luma, Pixel, Rgb};
 use log::{error, trace};

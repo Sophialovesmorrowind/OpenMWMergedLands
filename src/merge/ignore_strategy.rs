@@ -1,10 +1,10 @@
+use crate::ParsedPlugin;
 use crate::land::grid_access::SquareGridIterator;
 use crate::land::terrain_map::Vec2;
 use crate::merge::conflict::ConflictResolver;
 use crate::merge::merge_strategy::MergeStrategy;
 use crate::merge::relative_terrain_map::RelativeTerrainMap;
 use crate::merge::relative_to::RelativeTo;
-use crate::ParsedPlugin;
 
 #[derive(Default)]
 /// Implements [`MergeStrategy`] to ignore any conflicts by dropping the newest change.

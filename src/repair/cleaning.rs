@@ -1,11 +1,11 @@
-use crate::io::parsed_plugins::{is_esp, ParsedPlugin, ParsedPlugins};
+use crate::LandmassDiff;
+use crate::io::parsed_plugins::{ParsedPlugin, ParsedPlugins, is_esp};
 use crate::land::grid_access::SquareGridIterator;
 use crate::land::landscape_diff::LandscapeDiff;
 use crate::land::textures::{KnownTextures, RemappedTextures};
 use crate::merge::relative_terrain_map::RelativeTerrainMap;
 use crate::merge::relative_to::RelativeTo;
 use crate::repair::seam_detection::repair_landmass_seams;
-use crate::LandmassDiff;
 use log::{debug, warn};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -182,7 +182,8 @@ pub fn clean_known_textures(
                 land.coords.x,
                 land.coords.y,
                 invalid_texture_indices,
-                first_invalid_texture_index.expect("invalid index count implies first invalid index")
+                first_invalid_texture_index
+                    .expect("invalid index count implies first invalid index")
             );
         }
     }

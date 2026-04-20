@@ -1,9 +1,9 @@
 use crate::cli::SortOrder;
 use crate::io::meta_schema::{PluginMeta, VersionedPluginMeta};
 use crate::term_style::{bold, bold_red, yellow};
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use log::{debug, error, info, trace, warn};
-use openmw_config::{default_data_local_path, OpenMWConfiguration};
+use openmw_config::{OpenMWConfiguration, default_data_local_path};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::fs::File;
@@ -635,7 +635,7 @@ impl ParsedPlugins {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_esm, is_esp, meta_name, sort_plugins, DataDirs};
+    use super::{DataDirs, is_esm, is_esp, meta_name, sort_plugins};
     use crate::cli::SortOrder;
     use std::fs;
     use std::path::Path;

@@ -1,7 +1,7 @@
-use crate::io::app_config::{MergedLandsConfig, CONFIG_FILE_NAME};
+use crate::io::app_config::{CONFIG_FILE_NAME, MergedLandsConfig};
 use crate::io::meta_schema::{ConflictStrategy, MetaType};
 use crate::io::parsed_plugins::{
-    load_openmw_cfg, DataDirs, ParsedPlugin, ParsedPlugins, PluginListSource,
+    DataDirs, ParsedPlugin, ParsedPlugins, PluginListSource, load_openmw_cfg,
 };
 use crate::io::save_to_image::save_landmass_images;
 use crate::io::save_to_plugin::{convert_landmass_diff_to_landmass, save_plugin};
@@ -17,7 +17,7 @@ use crate::repair::cleaning::{clean_known_textures, clean_landmass_diff};
 use crate::repair::debugging::add_debug_vertex_colors_to_landmass;
 use crate::repair::seam_detection::repair_landmass_seams;
 use crate::term_style::{bold, bold_red};
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use log::{debug, error, info, trace, warn};
 use simplelog::{
     ColorChoice, CombinedLogger, ConfigBuilder, LevelFilter, LevelPadding, TermLogger,
@@ -101,9 +101,9 @@ impl LandmassDiff {
 }
 
 mod cli {
-    use crate::io::parsed_plugins::OpenMWCfgSource;
     use crate::ParsedPlugins;
-    use anyhow::{anyhow, Context, Result};
+    use crate::io::parsed_plugins::OpenMWCfgSource;
+    use anyhow::{Context, Result, anyhow};
     use clap::{Parser, ValueEnum};
     use log::LevelFilter;
     use std::path::PathBuf;
@@ -768,7 +768,8 @@ fn try_copy_landscape_and_remap_textures(
                     coords.y,
                     plugin.name,
                     invalid_texture_indices,
-                    first_invalid_texture_index.expect("invalid index count implies first invalid index")
+                    first_invalid_texture_index
+                        .expect("invalid index count implies first invalid index")
                 );
             }
         }

@@ -1,3 +1,4 @@
+use crate::ParsedPlugin;
 use crate::io::meta_schema::ConflictStrategy;
 use crate::land::terrain_map::Vec2;
 use crate::merge::conflict::ConflictResolver;
@@ -6,7 +7,6 @@ use crate::merge::overwrite_strategy::OverwriteStrategy;
 use crate::merge::relative_terrain_map::{OptionalTerrainMap, RelativeTerrainMap};
 use crate::merge::relative_to::RelativeTo;
 use crate::merge::resolve_conflict_strategy::ResolveConflictStrategy;
-use crate::ParsedPlugin;
 use log::trace;
 
 /// Types implementing [`MergeStrategy`] can create a new [`RelativeTerrainMap`] by combining
@@ -74,11 +74,7 @@ where
     if conflict_strategy != ConflictStrategy::Auto {
         trace!(
             "({:>4}, {:>4}) {:<15} | {:<50} | Strategy = {:?}",
-            coords.x,
-            coords.y,
-            value,
-            plugin.name,
-            conflict_strategy
+            coords.x, coords.y, value, plugin.name, conflict_strategy
         );
     }
 
