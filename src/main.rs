@@ -1176,10 +1176,242 @@ fn create_merged_lands_from_reference(reference: Arc<Landmass>) -> LandmassDiff 
 
 #[cfg(test)]
 mod tests {
-    use super::merge_openmw_texture_indices;
+    use super::{merge_all, merge_openmw_texture_indices};
+    use crate::io::parsed_plugins::meta_name;
     use crate::land::grid_access::Index2D;
+    use crate::land::height_map::calculate_vertex_heights_tes3;
     use crate::land::textures::IndexVTEX;
     use crate::merge::relative_terrain_map::{IsModified, RelativeTerrainMap};
+    use clap::Parser;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
+    use tes3::esp::{
+        Cell, Header, Landscape, LandscapeFlags, LandscapeTexture, ObjectFlags, Plugin, TES3Object,
+        TextureIndices,
+    };
+
+    fn unique_temp_dir(name: &str) -> PathBuf {
+        let unique = format!(
+            "{}_{}_{}",
+            name,
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("clock before unix epoch")
+                .as_nanos()
+        );
+        let dir = std::env::temp_dir().join(unique);
+        fs::create_dir_all(&dir).expect("create temp dir");
+        dir
+    }
+
+    fn write_plugin_file(
+        path: &Path,
+        plugin_name: &str,
+        lands: Vec<Landscape>,
+        cells: Vec<Cell>,
+        textures: Vec<LandscapeTexture>,
+        masters: Vec<(String, u64)>,
+    ) {
+        let expected_land_count = lands.len();
+        let mut plugin = Plugin::new();
+        plugin.objects.push(TES3Object::Header(Header {
+            author: format!("test:{plugin_name}").into(),
+            description: "integration fixture".to_string().into(),
+            masters: Some(masters),
+            ..Default::default()
+        }));
+
+        for texture in textures {
+            plugin.objects.push(TES3Object::LandscapeTexture(texture));
+        }
+
+        for cell in cells {
+            plugin.objects.push(TES3Object::Cell(cell));
+        }
+
+        for land in lands {
+            plugin.objects.push(TES3Object::Landscape(land));
+        }
+
+        plugin.save_path(path).expect("save fixture plugin");
+
+        let mut loaded = Plugin::new();
+        loaded.load_path(path).expect("reload fixture plugin");
+        let loaded_land_count = loaded
+            .objects
+            .iter()
+            .filter(|object| matches!(object, TES3Object::Landscape(_)))
+            .count();
+        assert_eq!(loaded_land_count, expected_land_count);
+
+        for land in loaded.objects.iter().filter_map(|object| match object {
+            TES3Object::Landscape(land) => Some(land),
+            _ => None,
+        }) {
+            assert!(
+                land.vertex_heights.is_some(),
+                "fixture LAND lost vertex heights after serialization"
+            );
+        }
+    }
+
+    fn fixture_land(coords: (i32, i32), height: i32, texture_index: Option<u16>) -> Landscape {
+        let mut land = Landscape::default();
+        land.flags = ObjectFlags::default();
+        land.grid = coords;
+        land.landscape_flags =
+            LandscapeFlags::USES_VERTEX_HEIGHTS_AND_NORMALS | LandscapeFlags::UNKNOWN;
+
+        let mut height_map = [[height; 65]; 65];
+        height_map[1][1] = height + 8;
+        land.vertex_heights = Some(calculate_vertex_heights_tes3(&height_map));
+        land.vertex_normals = Some(Default::default());
+
+        if let Some(index) = texture_index {
+            land.landscape_flags |= LandscapeFlags::USES_TEXTURES;
+            land.texture_indices = Some(TextureIndices {
+                data: Box::new([[index; 16]; 16]),
+            });
+        }
+
+        land
+    }
+
+    fn fixture_cell(coords: (i32, i32), id: &str) -> Cell {
+        let mut cell = Cell::default();
+        cell.data.grid = coords;
+        cell.id = id.to_string();
+        cell
+    }
+
+    fn fixture_ltex(id: &str, index: u32, file_name: &str) -> LandscapeTexture {
+        let mut texture = LandscapeTexture::default();
+        texture.id = id.to_string();
+        texture.index = Some(index);
+        texture.file_name = Some(file_name.to_string());
+        texture
+    }
+
+    fn run_vanilla_merge(
+        test_name: &str,
+        plugin_names: &[&str],
+        remove_cell_records: bool,
+        output_file_name: &str,
+    ) -> (PathBuf, PathBuf) {
+        let root = unique_temp_dir(test_name);
+        let data_files = root.join("Data Files");
+        let output_dir = root.join("Output");
+        let merged_lands_dir = root.join("MergedLands");
+
+        fs::create_dir_all(&data_files).expect("create Data Files dir");
+        fs::create_dir_all(&output_dir).expect("create output dir");
+        fs::create_dir_all(merged_lands_dir.join("Conflicts")).expect("create conflicts dir");
+
+        let mut args = vec![
+            "merged_lands".to_string(),
+            "--vanilla".to_string(),
+            "--data-files-dir".to_string(),
+            data_files.to_string_lossy().to_string(),
+            "--merged-lands-dir".to_string(),
+            merged_lands_dir.to_string_lossy().to_string(),
+            "--output-file-dir".to_string(),
+            output_dir.to_string_lossy().to_string(),
+            "--output-file".to_string(),
+            output_file_name.to_string(),
+            "--sort-order".to_string(),
+            "none".to_string(),
+        ];
+
+        if remove_cell_records {
+            args.push("--remove-cell-records".to_string());
+        }
+
+        for plugin in plugin_names {
+            args.push((*plugin).to_string());
+        }
+
+        let cli = crate::cli::Cli::try_parse_from(args).expect("parse cli args");
+        merge_all(&cli).expect("merge_all should succeed");
+
+        (root, output_dir)
+    }
+
+    fn run_openmw_merge(
+        test_name: &str,
+        plugin_names: &[&str],
+        remove_cell_records: bool,
+        output_file_name: &str,
+    ) -> (PathBuf, PathBuf) {
+        let root = unique_temp_dir(test_name);
+        let data_files = root.join("Data Files");
+        let output_dir = root.join("Output");
+        let merged_lands_dir = root.join("MergedLands");
+        let data_local = root.join("DataLocal");
+        let openmw_cfg = root.join("openmw.cfg");
+
+        fs::create_dir_all(&data_files).expect("create Data Files dir");
+        fs::create_dir_all(&output_dir).expect("create output dir");
+        fs::create_dir_all(&data_local).expect("create data-local dir");
+        fs::create_dir_all(merged_lands_dir.join("Conflicts")).expect("create conflicts dir");
+
+        let mut cfg = format!(
+            "data=\"{}\"\ndata-local=\"{}\"\n",
+            data_files.to_string_lossy(),
+            data_local.to_string_lossy(),
+        );
+        for plugin in plugin_names {
+            cfg.push_str(&format!("content=\"{}\"\n", plugin));
+        }
+        fs::write(&openmw_cfg, cfg).expect("write openmw.cfg");
+
+        let mut args = vec![
+            "merged_lands".to_string(),
+            "--openmw-cfg".to_string(),
+            openmw_cfg.to_string_lossy().to_string(),
+            "--merged-lands-dir".to_string(),
+            merged_lands_dir.to_string_lossy().to_string(),
+            "--output-file-dir".to_string(),
+            output_dir.to_string_lossy().to_string(),
+            "--output-file".to_string(),
+            output_file_name.to_string(),
+            "--sort-order".to_string(),
+            "none".to_string(),
+        ];
+
+        if remove_cell_records {
+            args.push("--remove-cell-records".to_string());
+        }
+
+        let cli = crate::cli::Cli::try_parse_from(args).expect("parse cli args");
+        merge_all(&cli).expect("merge_all should succeed");
+
+        (root, output_dir)
+    }
+
+    fn load_output_plugin(path: &Path) -> Plugin {
+        let mut plugin = Plugin::new();
+        plugin.load_path(path).expect("load merged output");
+        plugin
+    }
+
+    fn count_objects(plugin: &Plugin) -> (usize, usize, usize) {
+        let mut ltex = 0;
+        let mut cell = 0;
+        let mut land = 0;
+
+        for object in &plugin.objects {
+            match object {
+                TES3Object::LandscapeTexture(_) => ltex += 1,
+                TES3Object::Cell(_) => cell += 1,
+                TES3Object::Landscape(_) => land += 1,
+                _ => {}
+            }
+        }
+
+        (ltex, cell, land)
+    }
 
     fn idx(v: u16) -> IndexVTEX {
         IndexVTEX::new(v)
@@ -1216,5 +1448,203 @@ mod tests {
         assert!(merged.is_modified());
         assert_eq!(merged.get_value(Index2D::new(0, 0)).as_u16(), 10);
         assert_eq!(merged.get_value(Index2D::new(1, 1)).as_u16(), 0);
+    }
+
+    #[test]
+    fn e2e_single_plugin_writes_meta_and_header() {
+        let root = unique_temp_dir("e2e_single_plugin");
+        let data_files = root.join("Data Files");
+        fs::create_dir_all(&data_files).expect("create Data Files");
+
+        let plugin_name = "One.esp";
+        write_plugin_file(
+            &data_files.join(plugin_name),
+            plugin_name,
+            vec![fixture_land((0, 0), 24, None)],
+            vec![fixture_cell((0, 0), "Cell 0")],
+            vec![],
+            vec![],
+        );
+
+        let (_root, output_dir) = run_vanilla_merge(
+            "e2e_single_plugin_run",
+            &[plugin_name],
+            false,
+            "MergedTest.esp",
+        );
+        let merged_path = output_dir.join("MergedTest.esp");
+        let merged = load_output_plugin(&merged_path);
+        assert!(matches!(
+            merged.objects.first(),
+            Some(TES3Object::Header(_))
+        ));
+
+        let meta_path = output_dir.join(meta_name("MergedTest.esp"));
+        let meta_text = fs::read_to_string(meta_path).expect("read merged meta file");
+        let parsed: toml::Value = toml::from_str(&meta_text).expect("parse merged meta");
+        assert_eq!(parsed["version"].as_str(), Some("0"));
+        assert_eq!(parsed["meta_type"].as_str(), Some("MergedLands"));
+    }
+
+    #[test]
+    fn e2e_remove_cell_records_flag_keeps_output_cell_free_when_cleaned() {
+        let root = unique_temp_dir("e2e_cell_toggle");
+        let data_files = root.join("Data Files");
+        fs::create_dir_all(&data_files).expect("create Data Files");
+
+        let plugin_a = "CellsA.esp";
+        let plugin_b = "CellsB.esp";
+        write_plugin_file(
+            &data_files.join(plugin_a),
+            plugin_a,
+            vec![fixture_land((1, 1), 32, None)],
+            vec![fixture_cell((1, 1), "Cell 1")],
+            vec![],
+            vec![],
+        );
+
+        write_plugin_file(
+            &data_files.join(plugin_b),
+            plugin_b,
+            vec![fixture_land((1, 1), 96, None)],
+            vec![fixture_cell((1, 1), "Cell 1")],
+            vec![],
+            vec![],
+        );
+
+        let (_root_with_cells, output_with_cells) = run_openmw_merge(
+            "e2e_cells_on",
+            &[plugin_a, plugin_b],
+            false,
+            "WithCells.esp",
+        );
+        let with_cells = load_output_plugin(&output_with_cells.join("WithCells.esp"));
+        let (_, with_cell_count, with_land_count) = count_objects(&with_cells);
+        assert_eq!(with_cell_count, 0);
+        assert_eq!(with_land_count, 0);
+
+        let (_root_no_cells, output_no_cells) =
+            run_openmw_merge("e2e_cells_off", &[plugin_a, plugin_b], true, "NoCells.esp");
+        let no_cells = load_output_plugin(&output_no_cells.join("NoCells.esp"));
+        let (_, no_cell_count, no_land_count) = count_objects(&no_cells);
+        assert_eq!(no_cell_count, 0);
+        assert_eq!(no_land_count, 0);
+    }
+
+    #[test]
+    fn e2e_ltex_pruning_removes_all_textures_when_no_land_remains() {
+        let root = unique_temp_dir("e2e_ltex_prune");
+        let data_files = root.join("Data Files");
+        fs::create_dir_all(&data_files).expect("create Data Files");
+
+        let plugin_name = "Textures.esp";
+        write_plugin_file(
+            &data_files.join(plugin_name),
+            plugin_name,
+            vec![fixture_land((2, 2), 48, Some(1))],
+            vec![fixture_cell((2, 2), "Cell 2")],
+            vec![
+                fixture_ltex("used", 1, "used.dds"),
+                fixture_ltex("unused", 2, "unused.dds"),
+            ],
+            vec![],
+        );
+
+        write_plugin_file(
+            &data_files.join("TexturesPatch.esp"),
+            "TexturesPatch.esp",
+            vec![fixture_land((2, 2), 96, Some(1))],
+            vec![fixture_cell((2, 2), "Cell 2")],
+            vec![],
+            vec![],
+        );
+
+        let (_root_run, output_dir) = run_openmw_merge(
+            "e2e_ltex_prune_run",
+            &[plugin_name, "TexturesPatch.esp"],
+            false,
+            "LtexOut.esp",
+        );
+        let merged = load_output_plugin(&output_dir.join("LtexOut.esp"));
+        let (ltex_count, _cell_count, land_count) = count_objects(&merged);
+
+        assert_eq!(land_count, 0);
+        assert_eq!(ltex_count, 0);
+        let names: Vec<_> = merged
+            .objects
+            .iter()
+            .filter_map(|object| match object {
+                TES3Object::LandscapeTexture(texture) => Some(texture.id.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(names.is_empty());
+    }
+
+    #[test]
+    fn e2e_overlapping_plugins_can_clean_to_empty_output() {
+        let root = unique_temp_dir("e2e_overlapping_cleaned");
+        let data_files = root.join("Data Files");
+        fs::create_dir_all(&data_files).expect("create Data Files");
+
+        write_plugin_file(
+            &data_files.join("A.esp"),
+            "A.esp",
+            vec![fixture_land((10, 10), 16, None)],
+            vec![fixture_cell((10, 10), "A Cell")],
+            vec![],
+            vec![],
+        );
+
+        write_plugin_file(
+            &data_files.join("B.esp"),
+            "B.esp",
+            vec![fixture_land((10, 10), 64, None)],
+            vec![fixture_cell((10, 10), "B Cell")],
+            vec![],
+            vec![],
+        );
+
+        let (_root_run, output_dir) = run_openmw_merge(
+            "e2e_overlapping_cleaned_run",
+            &["A.esp", "B.esp"],
+            false,
+            "Both.esp",
+        );
+        let merged = load_output_plugin(&output_dir.join("Both.esp"));
+        let (_ltex_count, cell_count, land_count) = count_objects(&merged);
+        assert_eq!(cell_count, 0);
+        assert_eq!(land_count, 0);
+
+        let mut coords: Vec<_> = merged
+            .objects
+            .iter()
+            .filter_map(|object| match object {
+                TES3Object::Landscape(land) => Some(land.grid),
+                _ => None,
+            })
+            .collect();
+        coords.sort_unstable();
+        assert!(coords.is_empty());
+
+        let header = merged
+            .objects
+            .iter()
+            .find_map(|object| match object {
+                TES3Object::Header(header) => Some(header),
+                _ => None,
+            })
+            .expect("output should include header");
+        let master_names: Vec<_> = header
+            .masters
+            .as_ref()
+            .map(|masters| {
+                masters
+                    .iter()
+                    .map(|entry| entry.0.as_str())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        assert!(master_names.is_empty());
     }
 }
