@@ -359,41 +359,39 @@ fn ensure_output_file_dir_exists(dir: PathBuf, source: &str) -> Result<PathBuf> 
     Ok(dir)
 }
 
+fn run_merge_on_worker_thread(cli: Cli) -> Result<()> {
+    let worker_stack_size = cli.stack_size();
+    let worker = std::thread::Builder::new()
+        .stack_size(worker_stack_size)
+        .spawn(move || merge_all(&cli))
+        .with_context(|| anyhow!("unable to create worker thread"))?;
+
+    match worker.join() {
+        Ok(result) => result,
+        Err(panic) => {
+            let panic_message = format_thread_panic(panic);
+            Err(anyhow!("Worker thread panicked: {panic_message}"))
+        }
+    }
+}
+
 fn main() {
     let cli = Cli::read_args();
     let wait_for_exit = cli.wait_for_exit;
 
     init_log(&cli);
 
-    let work_thread = std::thread::Builder::new()
-        .stack_size(cli.stack_size())
-        .spawn(move || merge_all(&cli))
-        .expect("unable to create worker thread");
+    if let Err(e) = run_merge_on_worker_thread(cli) {
+        error!(
+            "{}",
+            bold_red(format!(
+                "An unexpected error occurred: {:?}",
+                bold(format!("{e:?}"))
+            ))
+        );
 
-    match work_thread.join() {
-        Ok(Ok(())) => {}
-        Ok(Err(e)) => {
-            error!(
-                "{}",
-                bold_red(format!(
-                    "An unexpected error occurred: {:?}",
-                    bold(format!("{e:?}"))
-                ))
-            );
-
-            wait_for_user_exit(wait_for_exit);
-            exit(1);
-        }
-        Err(panic) => {
-            let message = format_thread_panic(panic);
-            error!(
-                "{}",
-                bold_red(format!("Worker thread panicked: {}", bold(message)))
-            );
-
-            wait_for_user_exit(wait_for_exit);
-            exit(1);
-        }
+        wait_for_user_exit(wait_for_exit);
+        exit(1);
     }
 
     wait_for_user_exit(wait_for_exit);
@@ -1173,7 +1171,7 @@ fn create_merged_lands_from_reference(reference: &Landmass) -> LandmassDiff {
 
 #[cfg(test)]
 mod tests {
-    use super::{merge_all, merge_openmw_texture_indices};
+    use super::{merge_openmw_texture_indices, run_merge_on_worker_thread};
     use crate::io::parsed_plugins::meta_name;
     use crate::land::grid_access::Index2D;
     use crate::land::height_map::calculate_vertex_heights_tes3;
@@ -1337,7 +1335,7 @@ mod tests {
         }
 
         let cli = crate::cli::Cli::try_parse_from(args).expect("parse cli args");
-        merge_all(&cli).expect("merge_all should succeed");
+        run_merge_on_worker_thread(cli).expect("merge_all should succeed");
 
         (root, output_dir)
     }
@@ -1389,7 +1387,7 @@ mod tests {
         }
 
         let cli = crate::cli::Cli::try_parse_from(args).expect("parse cli args");
-        merge_all(&cli).expect("merge_all should succeed");
+        run_merge_on_worker_thread(cli).expect("merge_all should succeed");
 
         (root, output_dir)
     }
