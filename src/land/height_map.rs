@@ -184,3 +184,63 @@ pub fn try_calculate_height_map(land: &Landscape) -> Option<TerrainMap<i32, 65>>
 
     Some(grid_height)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        calculate_height_map, calculate_vertex_heights, calculate_vertex_heights_tes3,
+        truncate_gradient, try_calculate_height_map,
+    };
+    use tes3::esp::{Landscape, LandscapeFlags};
+
+    #[test]
+    fn truncate_gradient_clamps_to_i8_bounds() {
+        let mut too_large = i32::MAX;
+        truncate_gradient(&mut too_large);
+        assert_eq!(too_large, i32::from(i8::MAX));
+
+        let mut too_small = i32::MIN;
+        truncate_gradient(&mut too_small);
+        assert_eq!(too_small, i32::from(i8::MIN));
+    }
+
+    #[test]
+    fn vertex_heights_roundtrip_restores_original_height_map() {
+        let mut map = [[0i32; 65]; 65];
+        for (y, row) in map.iter_mut().enumerate() {
+            for (x, cell) in row.iter_mut().enumerate() {
+                *cell = ((x + y) as i32) * 8;
+            }
+        }
+
+        let vertex_heights = calculate_vertex_heights_tes3(&map);
+        let restored = calculate_height_map::<65>(&vertex_heights);
+        assert_eq!(restored, map);
+    }
+
+    #[test]
+    fn calculate_vertex_heights_returns_expected_offset_for_uniform_map() {
+        let map = [[80i32; 4]; 4];
+        let (offset, terrain) = calculate_vertex_heights(&map);
+        assert_eq!(offset, 10.0);
+        assert!(terrain.into_iter().flatten().all(|value| value == 0));
+    }
+
+    #[test]
+    fn try_calculate_height_map_requires_vertex_height_flag() {
+        let mut land = Landscape::default();
+        land.landscape_flags = LandscapeFlags::USES_VERTEX_COLORS;
+        assert!(try_calculate_height_map(&land).is_none());
+    }
+
+    #[test]
+    fn try_calculate_height_map_reads_vertex_heights_when_flagged() {
+        let map = [[16i32; 65]; 65];
+        let mut land = Landscape::default();
+        land.landscape_flags = LandscapeFlags::USES_VERTEX_HEIGHTS_AND_NORMALS;
+        land.vertex_heights = Some(calculate_vertex_heights_tes3(&map));
+
+        let parsed = try_calculate_height_map(&land).expect("height map should be present");
+        assert_eq!(parsed, map);
+    }
+}
