@@ -343,3 +343,142 @@ pub fn repair_landmass_seams(merged: &mut LandmassDiff) -> usize {
 
     num_seams_repaired
 }
+
+#[cfg(test)]
+mod tests {
+    use super::repair_landmass_seams;
+    use crate::io::parsed_plugins::ParsedPlugin;
+    use crate::land::grid_access::Index2D;
+    use crate::land::landscape_diff::LandscapeDiff;
+    use crate::land::terrain_map::Vec2;
+    use crate::merge::relative_terrain_map::RelativeTerrainMap;
+    use crate::LandmassDiff;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use tes3::esp::ObjectFlags;
+
+    fn run_with_large_stack<F>(f: F)
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(f)
+            .expect("spawn test thread")
+            .join()
+            .expect("test thread panicked");
+    }
+
+    fn plugin() -> Arc<ParsedPlugin> {
+        Arc::new(ParsedPlugin::empty("plugin.esp"))
+    }
+
+    fn landscape(coords: Vec2<i32>) -> LandscapeDiff {
+        LandscapeDiff {
+            coords,
+            flags: ObjectFlags::default(),
+            height_map: Some(RelativeTerrainMap::empty([[0i32; 65]; 65])),
+            vertex_normals: None,
+            world_map_data: None,
+            vertex_colors: None,
+            texture_indices: None,
+            plugins: vec![],
+        }
+    }
+
+    fn empty_landmass_diff() -> LandmassDiff {
+        LandmassDiff {
+            plugin: plugin(),
+            land: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn no_seams_means_no_repairs() {
+        run_with_large_stack(|| {
+            let mut merged = empty_landmass_diff();
+            merged
+                .land
+                .insert(Vec2::new(0, 0), landscape(Vec2::new(0, 0)));
+            merged
+                .land
+                .insert(Vec2::new(1, 0), landscape(Vec2::new(1, 0)));
+
+            let repaired = repair_landmass_seams(&mut merged);
+            assert_eq!(repaired, 0);
+        });
+    }
+
+    #[test]
+    fn repairs_single_side_seam_by_averaging() {
+        run_with_large_stack(|| {
+            let mut left = landscape(Vec2::new(0, 0));
+            left.height_map
+                .as_mut()
+                .expect("height map")
+                .set_value(Index2D::new(64, 10), 0);
+
+            let mut right = landscape(Vec2::new(1, 0));
+            right
+                .height_map
+                .as_mut()
+                .expect("height map")
+                .set_value(Index2D::new(0, 10), 10);
+
+            let mut merged = empty_landmass_diff();
+            merged.land.insert(Vec2::new(0, 0), left);
+            merged.land.insert(Vec2::new(1, 0), right);
+
+            let repaired = repair_landmass_seams(&mut merged);
+            assert_eq!(repaired, 1);
+
+            let left_value = merged
+                .land
+                .get(&Vec2::new(0, 0))
+                .expect("left cell")
+                .height_map
+                .as_ref()
+                .expect("height map")
+                .get_value(Index2D::new(64, 10));
+            let right_value = merged
+                .land
+                .get(&Vec2::new(1, 0))
+                .expect("right cell")
+                .height_map
+                .as_ref()
+                .expect("height map")
+                .get_value(Index2D::new(0, 10));
+
+            assert_eq!(left_value, 5);
+            assert_eq!(right_value, 5);
+        });
+    }
+
+    #[test]
+    fn seam_repair_is_idempotent_after_first_pass() {
+        run_with_large_stack(|| {
+            let mut left = landscape(Vec2::new(0, 0));
+            left.height_map
+                .as_mut()
+                .expect("height map")
+                .set_value(Index2D::new(64, 10), 0);
+
+            let mut right = landscape(Vec2::new(1, 0));
+            right
+                .height_map
+                .as_mut()
+                .expect("height map")
+                .set_value(Index2D::new(0, 10), 10);
+
+            let mut merged = empty_landmass_diff();
+            merged.land.insert(Vec2::new(0, 0), left);
+            merged.land.insert(Vec2::new(1, 0), right);
+
+            let first = repair_landmass_seams(&mut merged);
+            let second = repair_landmass_seams(&mut merged);
+
+            assert!(first > 0);
+            assert_eq!(second, 0);
+        });
+    }
+}
