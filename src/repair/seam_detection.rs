@@ -303,8 +303,7 @@ pub fn repair_landmass_seams(merged: &mut LandmassDiff) -> usize {
             }
         }
 
-        if seam_size > 0 {
-            let average = sum / seam_size;
+        if let Some(average) = sum.checked_div(seam_size) {
             repaired.insert((next, seam_size, max_delta, min_delta, average));
         }
 
