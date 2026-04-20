@@ -13,8 +13,9 @@ jobs:
       contents: write
       pages: write
       id-token: write
-    uses: DreamWeave-MP/StroggForge/.github/workflows/rustGlobalBuild.yml@v9
-    secrets: inherit
+    uses: DreamWeave-MP/StroggForge/.github/workflows/rustGlobalBuild.yml@v10
+    secrets:
+      VT_API_KEY: ${{ secrets.VT_API_KEY }}
     with:
       binary_names: '["merged_lands"]'
       publish_docs: false
