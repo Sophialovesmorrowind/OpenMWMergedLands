@@ -294,3 +294,121 @@ pub fn save_plugin(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        convert_landmass_diff_to_landmass, convert_landscape_diff_to_landscape, to_master_record,
+    };
+    use crate::io::parsed_plugins::{DataDirs, ParsedPlugin};
+    use crate::land::grid_access::Index2D;
+    use crate::land::landscape_diff::LandscapeDiff;
+    use crate::land::terrain_map::LandData;
+    use crate::land::textures::{IndexVTEX, RemappedTextures};
+    use crate::merge::relative_terrain_map::RelativeTerrainMap;
+    use crate::{LandmassDiff, Vec2};
+    use std::collections::HashMap;
+    use std::fs;
+    use std::sync::Arc;
+    use std::time::{SystemTime, UNIX_EPOCH};
+    use tes3::esp::{LandscapeFlags, ObjectFlags};
+
+    fn plugin(name: &str) -> Arc<ParsedPlugin> {
+        Arc::new(ParsedPlugin::empty(name))
+    }
+
+    fn landscape_diff_with_texture(
+        plugin: Arc<ParsedPlugin>,
+        coords: Vec2<i32>,
+        texture_index: u16,
+    ) -> LandscapeDiff {
+        let mut texture_indices =
+            RelativeTerrainMap::<IndexVTEX, 16>::empty([[IndexVTEX::new(0); 16]; 16]);
+        texture_indices.set_value(Index2D::new(1, 1), IndexVTEX::new(texture_index));
+
+        LandscapeDiff {
+            coords,
+            flags: ObjectFlags::default(),
+            height_map: Some(RelativeTerrainMap::empty([[0i32; 65]; 65])),
+            vertex_normals: None,
+            world_map_data: None,
+            vertex_colors: None,
+            texture_indices: Some(texture_indices),
+            plugins: vec![(plugin, LandData::default())],
+        }
+    }
+
+    #[test]
+    fn to_master_record_returns_file_size_for_existing_plugin() {
+        let unique = format!(
+            "merged_lands_master_size_{}_{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("clock before unix epoch")
+                .as_nanos()
+        );
+        let dir = std::env::temp_dir().join(unique);
+        fs::create_dir_all(&dir).expect("create temp dir");
+        let plugin_name = "size_test.esp";
+        let file_path = dir.join(plugin_name);
+        fs::write(&file_path, [1u8, 2, 3, 4, 5]).expect("write plugin file");
+
+        let record = to_master_record(&DataDirs::single(dir.clone()), plugin_name.to_string());
+        assert_eq!(record.0, plugin_name);
+        assert_eq!(record.1, 5);
+
+        fs::remove_dir_all(dir).expect("cleanup temp dir");
+    }
+
+    #[test]
+    fn to_master_record_returns_zero_when_plugin_is_missing() {
+        let dir = std::env::temp_dir().join("merged_lands_missing_master");
+        fs::create_dir_all(&dir).expect("create temp dir");
+
+        let record = to_master_record(&DataDirs::single(dir.clone()), "missing.esp".to_string());
+        assert_eq!(record.1, 0);
+
+        fs::remove_dir_all(dir).expect("cleanup temp dir");
+    }
+
+    #[test]
+    fn convert_landscape_diff_remaps_invalid_texture_to_default() {
+        let plugin = plugin("plugin.esp");
+        let landscape = landscape_diff_with_texture(plugin, Vec2::new(0, 0), 1);
+        let remapped = RemappedTextures::from(&[true]);
+
+        let converted = convert_landscape_diff_to_landscape(&landscape, &remapped);
+        let indices = converted
+            .texture_indices
+            .expect("texture indices should be present");
+
+        assert_eq!(indices.data[1][1], 0);
+        assert!(converted.vertex_heights.is_some());
+        assert!(converted.vertex_normals.is_some());
+        assert!(converted
+            .landscape_flags
+            .contains(LandscapeFlags::USES_VERTEX_HEIGHTS_AND_NORMALS));
+    }
+
+    #[test]
+    fn convert_landmass_diff_preserves_land_coordinates() {
+        let land_plugin = plugin("land.esp");
+        let diff_plugin = plugin("diff.esp");
+
+        let mut landmass_diff = LandmassDiff {
+            plugin: diff_plugin,
+            land: HashMap::new(),
+        };
+
+        let coords = Vec2::new(4, 8);
+        let landscape = landscape_diff_with_texture(land_plugin, coords, 0);
+        landmass_diff.land.insert(coords, landscape);
+
+        let remapped = RemappedTextures::from(&[true]);
+        let converted = convert_landmass_diff_to_landmass(&landmass_diff, &remapped);
+
+        assert!(converted.land.contains_key(&coords));
+        assert!(converted.plugins.contains_key(&coords));
+    }
+}
