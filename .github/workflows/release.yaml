@@ -13,10 +13,11 @@ jobs:
       contents: write
       pages: write
       id-token: write
-    uses: DreamWeave-MP/StroggForge/.github/workflows/rustGlobalBuild.yml@v13
+    uses: DreamWeave-MP/StroggForge/.github/workflows/rustGlobalBuild.yml@v14
     secrets:
       VT_API_KEY: ${{ secrets.VT_API_KEY }}
     with:
       binary_names: '["merged_lands"]'
       publish_docs: false
       cargo_publish: false
+      generate_discord_notification: false
