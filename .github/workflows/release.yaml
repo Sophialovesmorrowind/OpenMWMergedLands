@@ -17,5 +17,5 @@ jobs:
     secrets: inherit
     with:
       binary_names: '["merged_lands"]'
-      publish_docs: true
+      publish_docs: false
       cargo_publish: false
