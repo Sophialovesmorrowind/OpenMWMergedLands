@@ -5,7 +5,7 @@ use crate::merge::relative_to::RelativeTo;
 use const_default::ConstDefault;
 
 #[derive(Clone)]
-/// A [RelativeTerrainMap] is a set of 3 [TerrainMap] representing the original terrain,
+/// A [`RelativeTerrainMap`] is a set of 3 [`TerrainMap`] representing the original terrain,
 /// any differences from that original terrain as a delta, and a boolean grid of values
 /// where `true` indicates tht the difference from the original terrain is not zero.
 pub struct RelativeTerrainMap<U: RelativeTo, const T: usize> {
@@ -14,25 +14,25 @@ pub struct RelativeTerrainMap<U: RelativeTo, const T: usize> {
     has_difference: TerrainMap<bool, T>,
 }
 
-/// Type-erased struct for holding default [RelativeTerrainMap] constants.
+/// Type-erased struct for holding default [`RelativeTerrainMap`] constants.
 pub struct DefaultRelativeTerrainMap {}
 
 impl DefaultRelativeTerrainMap {
-    /// A blank [RelativeTerrainMap] representing an empty height map.
+    /// A blank [`RelativeTerrainMap`] representing an empty height map.
     pub const HEIGHT_MAP: RelativeTerrainMap<i32, 65> = RelativeTerrainMap::default();
 
-    /// A blank [RelativeTerrainMap] representing an empty vertex normals map.
+    /// A blank [`RelativeTerrainMap`] representing an empty vertex normals map.
     pub const VERTEX_NORMALS: RelativeTerrainMap<Vec3<i8>, 65> = RelativeTerrainMap::default();
 }
 
 impl<U: RelativeTo, const T: usize> SquareGridIterator<T> for RelativeTerrainMap<U, T> {
     fn iter_grid(&self) -> GridIterator2D<T, T> {
-        Default::default()
+        GridIterator2D::default()
     }
 }
 
 impl<U: RelativeTo, const T: usize> RelativeTerrainMap<U, T> {
-    /// Creates a [RelativeTerrainMap] with defaults.
+    /// Creates a [`RelativeTerrainMap`] with defaults.
     pub const fn default() -> Self {
         let reference = [[<U as ConstDefault>::DEFAULT; T]; T];
         let relative = [[<<U as RelativeTo>::Delta as ConstDefault>::DEFAULT; T]; T];
@@ -44,7 +44,7 @@ impl<U: RelativeTo, const T: usize> RelativeTerrainMap<U, T> {
         }
     }
 
-    /// Creates a [RelativeTerrainMap] from an existing reference [TerrainMap] without any
+    /// Creates a [`RelativeTerrainMap`] from an existing reference [`TerrainMap`] without any
     /// differences from the reference.
     pub const fn empty(reference: TerrainMap<U, T>) -> Self {
         let relative = [[<<U as RelativeTo>::Delta as ConstDefault>::DEFAULT; T]; T];
@@ -56,8 +56,8 @@ impl<U: RelativeTo, const T: usize> RelativeTerrainMap<U, T> {
         }
     }
 
-    /// Given a reference [TerrainMap] and a plugin [TerrainMap], calculates the
-    /// [RelativeTerrainMap] of the plugin with respect to the reference.
+    /// Given a reference [`TerrainMap`] and a plugin [`TerrainMap`], calculates the
+    /// [`RelativeTerrainMap`] of the plugin with respect to the reference.
     pub fn from_difference(
         reference: &TerrainMap<U, T>,
         plugin: &TerrainMap<U, T>,
@@ -85,13 +85,13 @@ impl<U: RelativeTo, const T: usize> RelativeTerrainMap<U, T> {
     pub fn set_value(&mut self, coords: Index2D, value: U) {
         let difference = U::subtract(value, self.reference.get(coords));
         *self.relative.get_mut(coords) = difference;
-        *self.has_difference.get_mut(coords) = difference != Default::default();
+        *self.has_difference.get_mut(coords) = difference != <U as RelativeTo>::Delta::default();
     }
 
     /// Get the difference at `coords`.
     pub fn get_difference(&self, coords: Index2D) -> <U as RelativeTo>::Delta {
         let delta = self.relative.get(coords);
-        if delta == Default::default() {
+        if delta == <U as RelativeTo>::Delta::default() {
             assert!(!self.has_difference.get(coords));
         } else {
             assert!(self.has_difference.get(coords));
@@ -102,16 +102,22 @@ impl<U: RelativeTo, const T: usize> RelativeTerrainMap<U, T> {
     /// Set the difference at `coords`.
     pub fn set_difference(&mut self, coords: Index2D, difference: <U as RelativeTo>::Delta) {
         *self.relative.get_mut(coords) = difference;
-        *self.has_difference.get_mut(coords) = difference != Default::default();
+        *self.has_difference.get_mut(coords) = difference != <U as RelativeTo>::Delta::default();
     }
 
     /// Returns `true` if there is a difference at `coords` with respect to the reference.
     pub fn has_difference(&self, coords: Index2D) -> bool {
         if self.has_difference.get(coords) {
-            assert_ne!(self.relative.get(coords), Default::default());
+            assert_ne!(
+                self.relative.get(coords),
+                <U as RelativeTo>::Delta::default()
+            );
             true
         } else {
-            assert_eq!(self.relative.get(coords), Default::default());
+            assert_eq!(
+                self.relative.get(coords),
+                <U as RelativeTo>::Delta::default()
+            );
             false
         }
     }
@@ -123,7 +129,7 @@ impl<U: RelativeTo, const T: usize> RelativeTerrainMap<U, T> {
         }
 
         for v in self.relative.as_flattened_mut() {
-            *v = Default::default();
+            *v = <U as RelativeTo>::Delta::default();
         }
     }
 
@@ -131,14 +137,14 @@ impl<U: RelativeTo, const T: usize> RelativeTerrainMap<U, T> {
     pub fn clean_some(&mut self, iter: impl Iterator<Item = Index2D>) {
         for coords in iter {
             *self.has_difference.get_mut(coords) = false;
-            *self.relative.get_mut(coords) = Default::default();
+            *self.relative.get_mut(coords) = <U as RelativeTo>::Delta::default();
         }
     }
 
-    /// Create a new [TerrainMap] by adding the differences to the reference.
-    /// This is the same as calling [RelativeTerrainMap::get_value] in a loop for each coordinate.
+    /// Create a new [`TerrainMap`] by adding the differences to the reference.
+    /// This is the same as calling [`RelativeTerrainMap::get_value`] in a loop for each coordinate.
     pub fn to_terrain(&self) -> TerrainMap<U, T> {
-        let mut terrain = [[Default::default(); T]; T];
+        let mut terrain = [[U::default(); T]; T];
         for coords in self.iter_grid() {
             *terrain.get_mut(coords) = self.get_value(coords);
         }
@@ -146,7 +152,7 @@ impl<U: RelativeTo, const T: usize> RelativeTerrainMap<U, T> {
     }
 }
 
-/// Types implementing [IsModified] report whether they differ from the reference.
+/// Types implementing [`IsModified`] report whether they differ from the reference.
 pub trait IsModified {
     /// Returns `true` if there are differences from the reference.
     fn is_modified(&self) -> bool;
@@ -158,16 +164,16 @@ impl<U: RelativeTo, const T: usize> IsModified for RelativeTerrainMap<U, T> {
     }
 }
 
-/// An [Option] wrapping a [RelativeTerrainMap].
+/// An [Option] wrapping a [`RelativeTerrainMap`].
 pub type OptionalTerrainMap<U, const T: usize> = Option<RelativeTerrainMap<U, T>>;
 
 impl<U: RelativeTo, const T: usize> IsModified for OptionalTerrainMap<U, T> {
     fn is_modified(&self) -> bool {
-        self.as_ref().map(|map| map.is_modified()).unwrap_or(false)
+        self.as_ref().is_some_and(IsModified::is_modified)
     }
 }
 
-/// Creates a [TerrainMap] representing the vertex normals of the `height_map` argument by
+/// Creates a [`TerrainMap`] representing the vertex normals of the `height_map` argument by
 /// recalculating the vertex normals from the terrain. If the optional `vertex_normals`
 /// is [Some], then the function will reuse those vertex normals on any unmodified coordinate
 /// in the `height_map` instead of calculating new normals.
@@ -182,7 +188,7 @@ pub fn recompute_vertex_normals(
     if let Some(vertex_normals) = vertex_normals {
         for coords in height_map.iter_grid() {
             if !height_map.has_difference(coords) {
-                assert_eq!(vertex_normals.get_difference(coords), Default::default());
+                assert_eq!(vertex_normals.get_difference(coords), Vec3::default());
                 *recomputed_vertex_normals.get_mut(coords) = vertex_normals.get_value(coords);
             }
         }
@@ -256,7 +262,11 @@ mod tests {
 
     #[test]
     fn recompute_vertex_normals_reuses_unmodified_existing_values() {
-        let height_map = RelativeTerrainMap::<i32, 65>::empty([[0i32; 65]; 65]);
+        let height_reference: Box<[[i32; 65]; 65]> = vec![[0i32; 65]; 65]
+            .into_boxed_slice()
+            .try_into()
+            .expect("valid 65x65 height map");
+        let height_map = RelativeTerrainMap::<i32, 65>::empty(*height_reference);
         let old_normals_reference: TerrainMap<Vec3<i8>, 65> = [[Vec3::new(7, -3, 2); 65]; 65];
         let old_normals = RelativeTerrainMap::<Vec3<i8>, 65>::empty(old_normals_reference);
 

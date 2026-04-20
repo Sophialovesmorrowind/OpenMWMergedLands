@@ -1,11 +1,11 @@
 use crate::cli::SortOrder;
-use crate::io::meta_schema::{MetaType, PluginMeta, VersionedPluginMeta};
+use crate::io::meta_schema::{MergeSettings, MetaType, PluginMeta, VersionedPluginMeta};
 use crate::io::parsed_plugins::{meta_name, sort_plugins, DataDirs, ParsedPlugin, ParsedPlugins};
 use crate::land::conversions::convert_terrain_map;
 use crate::land::height_map::calculate_vertex_heights_tes3;
 use crate::land::landscape_diff::LandscapeDiff;
 use crate::land::terrain_map::Vec3;
-use crate::land::textures::{KnownTextures, RemappedTextures};
+use crate::land::textures::{IndexVTEX, KnownTextures, RemappedTextures};
 use crate::merge::cells::ModifiedCell;
 use crate::merge::relative_terrain_map::{recompute_vertex_normals, DefaultRelativeTerrainMap};
 use crate::{Landmass, LandmassDiff, Vec2};
@@ -21,16 +21,16 @@ use tes3::esp::{
     VertexColors, VertexNormals, WorldMapData,
 };
 
-/// Converts a [LandscapeDiff] to a [Landscape].
-/// The [RemappedTextures] is used to update any texture indices.
+/// Converts a [`LandscapeDiff`] to a [Landscape].
+/// The [`RemappedTextures`] is used to update any texture indices.
 fn convert_landscape_diff_to_landscape(
     landscape: &LandscapeDiff,
     remapped_textures: &RemappedTextures,
 ) -> Landscape {
-    let mut new_landscape: Landscape = Default::default();
+    let mut new_landscape = Landscape::default();
 
     assert!(!landscape.plugins.is_empty());
-    for (plugin, modified_data) in landscape.plugins.iter() {
+    for (plugin, modified_data) in &landscape.plugins {
         if modified_data.is_empty() {
             continue;
         }
@@ -86,7 +86,7 @@ fn convert_landscape_diff_to_landscape(
             } else {
                 invalid_texture_indices += 1;
                 first_invalid_texture_index.get_or_insert(idx.as_u16());
-                *idx = Default::default();
+                *idx = IndexVTEX::default();
             }
         }
 
@@ -101,7 +101,10 @@ fn convert_landscape_diff_to_landscape(
         }
 
         new_landscape.texture_indices = Some(TextureIndices {
-            data: Box::new(convert_terrain_map(&texture_indices, |v| v.as_u16())),
+            data: Box::new(convert_terrain_map(
+                &texture_indices,
+                crate::land::textures::IndexVTEX::as_u16,
+            )),
         });
     }
 
@@ -114,8 +117,8 @@ fn convert_landscape_diff_to_landscape(
     new_landscape
 }
 
-/// Converts a [LandmassDiff] to a [Landmass].
-/// The [RemappedTextures] is used to update any texture indices.
+/// Converts a [`LandmassDiff`] to a [Landmass].
+/// The [`RemappedTextures`] is used to update any texture indices.
 pub fn convert_landmass_diff_to_landmass(
     landmass: &LandmassDiff,
     remapped_textures: &RemappedTextures,
@@ -141,7 +144,7 @@ fn to_master_record(data_dirs: &DataDirs, name: String) -> (String, u64) {
     (name, file_size)
 }
 
-/// Saves the [Landmass] with [KnownTextures].
+/// Saves the [Landmass] with [`KnownTextures`].
 pub fn save_plugin(
     data_dirs: &DataDirs,
     output_file_dir: &Path,
@@ -152,7 +155,7 @@ pub fn save_plugin(
     cells: Option<&HashMap<Vec2<i32>, ModifiedCell>>,
 ) -> Result<()> {
     ParsedPlugins::check_dir_exists(output_file_dir)
-        .with_context(|| anyhow!("Unable to save file {}", output_name))?;
+        .with_context(|| anyhow!("Unable to save file {output_name}"))?;
 
     let mut plugin = Plugin::new();
 
@@ -178,10 +181,7 @@ pub fn save_plugin(
             // Add plugins that modified cells.
             for (coords, _) in landmass.sorted() {
                 let cell = cells.get(coords).with_context(|| {
-                    anyhow!(
-                        "Could not find CELL record for LAND with coordinates {:?}",
-                        coords
-                    )
+                    anyhow!("Could not find CELL record for LAND with coordinates {coords:?}")
                 })?;
 
                 let plugin = cell.plugins.last().expect("safe");
@@ -204,7 +204,7 @@ pub fn save_plugin(
         let mut masters: Vec<_> = dependencies.drain().collect();
 
         sort_plugins(data_dirs, &mut masters, sort_order)
-            .with_context(|| anyhow!("Unknown load order for {} dependencies", output_name))?;
+            .with_context(|| anyhow!("Unknown load order for {output_name} dependencies"))?;
 
         Some(
             masters
@@ -218,14 +218,13 @@ pub fn save_plugin(
         trace!("Master  | {:>4} | {:<50} | {:>10}", idx, master.0, master.1);
     }
 
-    let generated_time = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| format!("{} UTC", duration.as_secs()))
-        .unwrap_or_else(|_| "unknown".into());
+    let generated_time = SystemTime::now().duration_since(UNIX_EPOCH).map_or_else(
+        |_| "unknown".into(),
+        |duration| format!("{} UTC", duration.as_secs()),
+    );
 
     let description = format!(
-        "Merges landscape changes inside of cells. Place at end of load order. Generated at {}.",
-        generated_time
+        "Merges landscape changes inside of cells. Place at end of load order. Generated at {generated_time}."
     );
 
     let author = "Merged Lands by DVD".to_string();
@@ -273,24 +272,24 @@ pub fn save_plugin(
 
     let meta = VersionedPluginMeta::V0(PluginMeta {
         meta_type: MetaType::MergedLands,
-        height_map: Default::default(),
-        vertex_colors: Default::default(),
-        texture_indices: Default::default(),
-        world_map_data: Default::default(),
+        height_map: MergeSettings::default(),
+        vertex_colors: MergeSettings::default(),
+        texture_indices: MergeSettings::default(),
+        world_map_data: MergeSettings::default(),
     });
 
-    trace!("Saving meta file {}", meta_name);
+    trace!("Saving meta file {meta_name}");
     fs::write(merged_meta, toml::to_string(&meta).expect("safe"))
-        .with_context(|| anyhow!("Unable to save plugin meta {}", meta_name))?;
+        .with_context(|| anyhow!("Unable to save plugin meta {meta_name}"))?;
 
     let merged_filepath: PathBuf = [output_file_dir, Path::new(output_name)].iter().collect();
 
-    trace!("Saving file {}", output_name);
+    trace!("Saving file {output_name}");
     plugin
         .save_path(&merged_filepath)
-        .with_context(|| anyhow!("Unable to save plugin {}", output_name))?;
+        .with_context(|| anyhow!("Unable to save plugin {output_name}"))?;
 
-    trace!(" - Description: {}", description);
+    trace!(" - Description: {description}");
 
     Ok(())
 }
@@ -316,7 +315,9 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::Arc;
     use std::time::{SystemTime, UNIX_EPOCH};
-    use tes3::esp::{Cell, Landscape, LandscapeFlags, ObjectFlags, Plugin, TES3Object};
+    use tes3::esp::{
+        Cell, Landscape, LandscapeFlags, ObjectFlags, Plugin, TES3Object, VertexNormals,
+    };
 
     fn plugin(name: &str) -> Arc<ParsedPlugin> {
         Arc::new(ParsedPlugin::empty(name))
@@ -338,17 +339,21 @@ mod tests {
     }
 
     fn fixture_land(coords: (i32, i32), base_height: i32) -> Landscape {
-        let mut land = Landscape::default();
-        land.flags = ObjectFlags::default();
-        land.grid = coords;
-        land.landscape_flags =
-            LandscapeFlags::USES_VERTEX_HEIGHTS_AND_NORMALS | LandscapeFlags::UNKNOWN;
-
-        let mut heights = [[base_height; 65]; 65];
+        let mut heights: Box<[[i32; 65]; 65]> = vec![[base_height; 65]; 65]
+            .into_boxed_slice()
+            .try_into()
+            .expect("valid 65x65 height map");
         heights[1][1] = base_height + 16;
-        land.vertex_heights = Some(calculate_vertex_heights_tes3(&heights));
-        land.vertex_normals = Some(Default::default());
-        land
+
+        Landscape {
+            flags: ObjectFlags::default(),
+            grid: coords,
+            landscape_flags: LandscapeFlags::USES_VERTEX_HEIGHTS_AND_NORMALS
+                | LandscapeFlags::UNKNOWN,
+            vertex_heights: Some(calculate_vertex_heights_tes3(&heights)),
+            vertex_normals: Some(VertexNormals::default()),
+            ..Landscape::default()
+        }
     }
 
     fn fixture_cell(coords: (i32, i32), id: &str) -> Cell {
@@ -398,11 +403,15 @@ mod tests {
         let mut texture_indices =
             RelativeTerrainMap::<IndexVTEX, 16>::empty([[IndexVTEX::new(0); 16]; 16]);
         texture_indices.set_value(Index2D::new(1, 1), IndexVTEX::new(texture_index));
+        let height_map: Box<[[i32; 65]; 65]> = vec![[0i32; 65]; 65]
+            .into_boxed_slice()
+            .try_into()
+            .expect("valid 65x65 height map");
 
         LandscapeDiff {
             coords,
             flags: ObjectFlags::default(),
-            height_map: Some(RelativeTerrainMap::empty([[0i32; 65]; 65])),
+            height_map: Some(RelativeTerrainMap::empty(*height_map)),
             vertex_normals: None,
             world_map_data: None,
             vertex_colors: None,

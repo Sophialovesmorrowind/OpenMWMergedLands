@@ -2,17 +2,17 @@ use crate::land::terrain_map::Vec3;
 use const_default::ConstDefault;
 use std::fmt::Debug;
 
-/// Types implementing [RelativeTo] can be subtracted with [RelativeTo::subtract] to compute
-/// some delta of type [RelativeTo::Delta]. The delta can be passed to [RelativeTo::add] to
+/// Types implementing [`RelativeTo`] can be subtracted with [`RelativeTo::subtract`] to compute
+/// some delta of type [`RelativeTo::Delta`]. The delta can be passed to [`RelativeTo::add`] to
 /// recompute the original value.
 pub trait RelativeTo: Copy + Default + ConstDefault + Eq + Debug + Sized + 'static {
-    /// A [RelativeTo::Delta] is a signed version of the type implementing [RelativeTo].
+    /// A [`RelativeTo::Delta`] is a signed version of the type implementing [`RelativeTo`].
     type Delta: Copy + Default + ConstDefault + Eq + Debug + Sized + 'static;
 
-    /// Subtract `rhs` from `lhs` and return the [RelativeTo::Delta].
+    /// Subtract `rhs` from `lhs` and return the [`RelativeTo::Delta`].
     fn subtract(lhs: Self, rhs: Self) -> Self::Delta;
 
-    /// Add the [RelativeTo::Delta] `rhs` to `lhs`.
+    /// Add the [`RelativeTo::Delta`] `rhs` to `lhs`.
     fn add(lhs: Self, rhs: Self::Delta) -> Self;
 }
 
@@ -20,11 +20,11 @@ impl RelativeTo for i32 {
     type Delta = i32;
 
     fn subtract(lhs: Self, rhs: Self) -> Self::Delta {
-        (lhs as Self::Delta) - (rhs as Self::Delta)
+        lhs - rhs
     }
 
     fn add(lhs: Self, rhs: Self::Delta) -> Self {
-        ((lhs as Self::Delta) + rhs) as Self
+        lhs + rhs
     }
 }
 
@@ -32,11 +32,11 @@ impl RelativeTo for u8 {
     type Delta = i32;
 
     fn subtract(lhs: Self, rhs: Self) -> Self::Delta {
-        (lhs as Self::Delta) - (rhs as Self::Delta)
+        Self::Delta::from(lhs) - Self::Delta::from(rhs)
     }
 
     fn add(lhs: Self, rhs: Self::Delta) -> Self {
-        ((lhs as Self::Delta) + rhs) as Self
+        Self::try_from(Self::Delta::from(lhs) + rhs).expect("u8 addition overflow")
     }
 }
 
@@ -44,11 +44,11 @@ impl RelativeTo for i8 {
     type Delta = i32;
 
     fn subtract(lhs: Self, rhs: Self) -> Self::Delta {
-        (lhs as Self::Delta) - (rhs as Self::Delta)
+        Self::Delta::from(lhs) - Self::Delta::from(rhs)
     }
 
     fn add(lhs: Self, rhs: Self::Delta) -> Self {
-        ((lhs as Self::Delta) + rhs) as Self
+        Self::try_from(Self::Delta::from(lhs) + rhs).expect("i8 addition overflow")
     }
 }
 
@@ -56,11 +56,11 @@ impl RelativeTo for u16 {
     type Delta = i32;
 
     fn subtract(lhs: Self, rhs: Self) -> Self::Delta {
-        (lhs as Self::Delta) - (rhs as Self::Delta)
+        Self::Delta::from(lhs) - Self::Delta::from(rhs)
     }
 
     fn add(lhs: Self, rhs: Self::Delta) -> Self {
-        ((lhs as Self::Delta) + rhs) as Self
+        Self::try_from(Self::Delta::from(lhs) + rhs).expect("u16 addition overflow")
     }
 }
 

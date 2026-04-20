@@ -69,7 +69,7 @@ impl<T> From<Vec3<T>> for [T; 3] {
 }
 
 /// A wrapper type for `[[U; T]; T]`.
-/// Implements [GridAccessor2D] and [SquareGridIterator].
+/// Implements [`GridAccessor2D`] and [`SquareGridIterator`].
 pub type TerrainMap<U, const T: usize> = [[U; T]; T];
 
 impl<U: Copy, const T: usize> GridAccessor2D<U> for TerrainMap<U, T> {
@@ -84,7 +84,7 @@ impl<U: Copy, const T: usize> GridAccessor2D<U> for TerrainMap<U, T> {
 
 impl<U, const T: usize> SquareGridIterator<T> for TerrainMap<U, T> {
     fn iter_grid(&self) -> GridIterator2D<T, T> {
-        Default::default()
+        GridIterator2D::default()
     }
 }
 
@@ -96,7 +96,7 @@ bitflags! {
         const TEXTURES = 0b100;
         const VERTEX_HEIGHTS = 0b1000;
         const VERTEX_NORMALS = 0b10000;
-        const WORLD_MAP = 0b100000;
+        const WORLD_MAP = 0b10_0000;
     }
 }
 

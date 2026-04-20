@@ -19,11 +19,11 @@ use tes3::esp::{Cell, Header, Landscape, LandscapeTexture, Plugin, TES3Object};
 
 /// A set of directories in which plugin files and their meta files can be found.
 ///
-/// For classic Morrowind, this is a single `Data Files` directory. For OpenMW it is the
+/// For classic Morrowind, this is a single `Data Files` directory. For `OpenMW` it is the
 /// ordered list of `data=` entries from `openmw.cfg`, plus any engine-added entries such as
 /// the resources VFS and `data-local`.
 ///
-/// Within the vector, later entries have higher priority (OpenMW's VFS last-wins rule).
+/// Within the vector, later entries have higher priority (`OpenMW`'s VFS last-wins rule).
 /// [`DataDirs::resolve`] walks the list in reverse to locate a file.
 #[derive(Debug, Clone)]
 pub struct DataDirs {
@@ -72,7 +72,7 @@ impl DataDirs {
 
     /// Iterates over the directories in priority order (lowest first, highest last).
     pub fn iter(&self) -> impl Iterator<Item = &Path> {
-        self.dirs.iter().map(|p| p.as_path())
+        self.dirs.iter().map(std::path::PathBuf::as_path)
     }
 }
 
@@ -93,7 +93,7 @@ pub enum PluginListSource {
 // OpenMW cfg loading
 // -------------------------------------------------------------------------------------------------
 
-/// Where to load the OpenMW configuration from.
+/// Where to load the `OpenMW` configuration from.
 pub enum OpenMWCfgSource {
     /// Use [`OpenMWConfiguration::from_env`] — respects `OPENMW_CONFIG` / `OPENMW_CONFIG_DIR`
     /// and then falls back to the platform-default location.
@@ -107,15 +107,15 @@ pub struct LoadedOpenMWConfig {
     pub data_dirs: DataDirs,
     /// The ordered `content=` entries from `openmw.cfg`.
     pub plugins: Vec<String>,
-    /// The directory to use as the default output location in OpenMW mode.
+    /// The directory to use as the default output location in `OpenMW` mode.
     pub data_local: PathBuf,
 }
 
-/// Loads an OpenMW configuration and extracts the list of data directories, the ordered list of
+/// Loads an `OpenMW` configuration and extracts the list of data directories, the ordered list of
 /// `content=` entries, and the resolved `data-local` output directory.
 ///
 /// The returned [`DataDirs`] will include any entries the `openmw-config` crate injects for the
-/// engine resources VFS and `data-local`; this matches what OpenMW itself sees at runtime.
+/// engine resources VFS and `data-local`; this matches what `OpenMW` itself sees at runtime.
 pub fn load_openmw_cfg(source: OpenMWCfgSource) -> Result<LoadedOpenMWConfig> {
     let config = match source {
         OpenMWCfgSource::Default => {
@@ -130,7 +130,7 @@ pub fn load_openmw_cfg(source: OpenMWCfgSource) -> Result<LoadedOpenMWConfig> {
             OpenMWConfiguration::new(Some(path))
         }
     }
-    .map_err(|e| anyhow!("Failed to load openmw.cfg: {:?}", e))?;
+    .map_err(|e| anyhow!("Failed to load openmw.cfg: {e:?}"))?;
 
     debug!(
         "Using root openmw.cfg at {}",
@@ -163,8 +163,7 @@ pub fn load_openmw_cfg(source: OpenMWCfgSource) -> Result<LoadedOpenMWConfig> {
 
     let data_local = config
         .data_local()
-        .map(|dir| dir.parsed().to_path_buf())
-        .unwrap_or_else(default_data_local_path);
+        .map_or_else(default_data_local_path, |dir| dir.parsed().to_path_buf());
 
     debug!(
         "Resolved OpenMW data-local output directory to {}",
@@ -186,10 +185,7 @@ pub fn load_openmw_cfg(source: OpenMWCfgSource) -> Result<LoadedOpenMWConfig> {
 /// Parse a [`Plugin`] named `plugin_name`, resolving it through `data_dirs`.
 fn parse_records(data_dirs: &DataDirs, plugin_name: &str) -> Result<Plugin> {
     let file_path = data_dirs.resolve(plugin_name).with_context(|| {
-        anyhow!(
-            "Unable to find plugin {} in any configured data directory",
-            plugin_name
-        )
+        anyhow!("Unable to find plugin {plugin_name} in any configured data directory")
     })?;
 
     let mut plugin = Plugin::new();
@@ -200,7 +196,7 @@ fn parse_records(data_dirs: &DataDirs, plugin_name: &str) -> Result<Plugin> {
                 Header::TAG | LandscapeTexture::TAG | Landscape::TAG | Cell::TAG
             )
         })
-        .with_context(|| anyhow!("Failed to load records from plugin {}", plugin_name))?;
+        .with_context(|| anyhow!("Failed to load records from plugin {plugin_name}"))?;
 
     plugin.objects.retain(|object| match object {
         TES3Object::Cell(cell) => cell.is_exterior(),
@@ -225,14 +221,14 @@ fn read_lines(filename: &Path) -> Result<Lines<BufReader<File>>> {
 pub fn is_esm(path: impl AsRef<Path>) -> bool {
     path.as_ref()
         .extension()
-        .map_or(false, |ext| ext.eq_ignore_ascii_case("esm"))
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("esm"))
 }
 
 /// Returns `true` if `path` ends with `.esp`, ignoring case.
 pub fn is_esp(path: impl AsRef<Path>) -> bool {
     path.as_ref()
         .extension()
-        .map_or(false, |ext| ext.eq_ignore_ascii_case("esp"))
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("esp"))
 }
 
 /// Sorts `plugin_list` by last modified time, with `.esm` files given priority.
@@ -249,15 +245,12 @@ pub fn sort_plugins(
     let mut cached_order = HashMap::with_capacity(plugin_list.len());
     for plugin_name in plugin_list.iter() {
         let path = data_dirs.resolve(plugin_name).with_context(|| {
-            anyhow!(
-                "Unable to find plugin {} when computing load order",
-                plugin_name
-            )
+            anyhow!("Unable to find plugin {plugin_name} when computing load order")
         })?;
         let last_modified_time = path
             .metadata()
             .and_then(|metadata| metadata.modified())
-            .with_context(|| anyhow!("Unable to read metadata for plugin {}", plugin_name))?;
+            .with_context(|| anyhow!("Unable to read metadata for plugin {plugin_name}"))?;
 
         cached_order.insert(
             plugin_name.clone(),
@@ -278,34 +271,36 @@ pub fn sort_plugins(
 /// Returns a `name` describing a meta file by replacing the extension with `.mergedlands.toml`.
 pub fn meta_name(name: &str) -> String {
     let file_name_without_extension = Path::new(&name).file_stem().unwrap().to_string_lossy();
-    format!("{}.mergedlands.toml", file_name_without_extension)
+    format!("{file_name_without_extension}.mergedlands.toml")
 }
 
 // -------------------------------------------------------------------------------------------------
 // ParsedPlugin / ParsedPlugins
 // -------------------------------------------------------------------------------------------------
 
-/// A [ParsedPlugin] is the `name`, [Plugin] records, and any [PluginMeta] data.
+/// A [`ParsedPlugin`] is the `name`, [Plugin] records, and any [`PluginMeta`] data.
 pub struct ParsedPlugin {
     /// The `name` of the plugin.
     pub name: String,
     /// The parsed [Plugin] records.
     pub records: Plugin,
-    /// The parsed [PluginMeta], or a default if no meta file was found.
+    /// The parsed [`PluginMeta`], or a default if no meta file was found.
     pub meta: PluginMeta,
 }
 
+const QUOTE_CHARS: [char; 2] = ['\'', '"'];
+
 impl ParsedPlugin {
-    /// Returns an empty [ParsedPlugin] with the provided `name`.
+    /// Returns an empty [`ParsedPlugin`] with the provided `name`.
     pub fn empty(name: &str) -> Self {
         Self {
             name: name.to_string(),
             records: Plugin::new(),
-            meta: Default::default(),
+            meta: PluginMeta::default(),
         }
     }
 
-    /// Creates a [ParsedPlugin]. If `meta` is [None], a default [PluginMeta] is created.
+    /// Creates a [`ParsedPlugin`]. If `meta` is [None], a default [`PluginMeta`] is created.
     fn from(name: &str, records: Plugin, meta: Option<PluginMeta>) -> Self {
         Self {
             name: name.to_string(),
@@ -335,20 +330,20 @@ impl PartialEq<Self> for ParsedPlugin {
 
 impl Hash for ParsedPlugin {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.name.hash(state)
+        self.name.hash(state);
     }
 }
 
-/// All [ParsedPlugin] organized for downstream merge logic.
+/// All [`ParsedPlugin`] organized for downstream merge logic.
 ///
 /// In classic mode, plugins are split into "master-like" vs "plugin-like".
-/// In OpenMW mode, `masters` is empty and `plugins` preserves the exact content order.
+/// In `OpenMW` mode, `masters` is empty and `plugins` preserves the exact content order.
 pub struct ParsedPlugins {
     /// The ordered list of master-like plugins.
-    /// These are used for creating the reference [crate::Landmass].
+    /// These are used for creating the reference [`crate::Landmass`].
     pub masters: Vec<Arc<ParsedPlugin>>,
     /// The ordered list of plugin-like plugins.
-    /// These are used for creating each [crate::LandmassDiff].
+    /// These are used for creating each [`crate::LandmassDiff`].
     pub plugins: Vec<Arc<ParsedPlugin>>,
 }
 
@@ -359,11 +354,9 @@ fn read_ini_file(data_dirs: &DataDirs, path: &Path) -> Result<Vec<String>> {
 
     let mut all_plugins = Vec::new();
 
-    const QUOTE_CHARS: [char; 2] = ['\'', '"'];
-
     let mut is_game_files = false;
     for line in lines
-        .flatten()
+        .map_while(Result::ok)
         .map(|line| line.trim().to_string())
         .filter(|line| !line.is_empty() && !line.starts_with(';'))
     {
@@ -441,10 +434,10 @@ impl ParsedPlugins {
         Ok(())
     }
 
-    /// Creates a new [ParsedPlugins].
+    /// Creates a new [`ParsedPlugins`].
     ///
     /// - `data_dirs` is the set of search directories (one entry for classic Morrowind, many for
-    ///   OpenMW).
+    ///   `OpenMW`).
     /// - `source` determines where the plugin list comes from.
     /// - `sort_order` is applied after the list is gathered; pass [`SortOrder::None`] to preserve
     ///   the list's existing order (recommended when the list came from `openmw.cfg`, which is
@@ -558,9 +551,9 @@ impl ParsedPlugins {
         Ok(Self { masters, plugins })
     }
 
-    /// Validates that OpenMW `content=` order respects each plugin's TES3 header masters.
+    /// Validates that `OpenMW` `content=` order respects each plugin's TES3 header masters.
     ///
-    /// OpenMW loads content in the order given. A plugin may depend on an earlier plugin, but if
+    /// `OpenMW` loads content in the order given. A plugin may depend on an earlier plugin, but if
     /// one of its declared masters is missing or appears later in the list, we treat that as a
     /// user load-order problem and stop cleanly.
     fn validate_openmw_load_order(parsed: &[Arc<ParsedPlugin>]) -> Result<()> {
@@ -621,7 +614,7 @@ impl ParsedPlugins {
 
         match data {
             Ok(VersionedPluginMeta::V0(meta)) => {
-                trace!("Parsed meta file {}", meta_file_name);
+                trace!("Parsed meta file {meta_file_name}");
                 Some(meta)
             }
             Ok(VersionedPluginMeta::Unsupported) => {

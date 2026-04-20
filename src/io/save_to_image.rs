@@ -18,6 +18,10 @@ use std::path::{Path, PathBuf};
 
 const DEFAULT_SCALE_FACTOR: usize = 4;
 
+fn usize_to_u32(value: usize) -> u32 {
+    u32::try_from(value).expect("image dimension exceeds u32")
+}
+
 /// Saves `img` to `file_name` after resizing by `scale_factor`.
 fn save_resized_image<const T: usize, I>(
     img: I,
@@ -40,8 +44,8 @@ where
     assert!(scale_factor > 0, "scale_factor must be > 0");
     DynamicImage::from(img)
         .resize_exact(
-            (T * scale_factor) as u32,
-            (T * scale_factor) as u32,
+            usize_to_u32(T * scale_factor),
+            usize_to_u32(T * scale_factor),
             FilterType::Nearest,
         )
         .save(file_path)
@@ -56,15 +60,15 @@ where
     Container: Deref<Target = [P::Subpixel]> + DerefMut<Target = [P::Subpixel]>,
 {
     fn get(&self, coords: Index2D) -> P {
-        *self.get_pixel(coords.x as u32, coords.y as u32)
+        *self.get_pixel(usize_to_u32(coords.x), usize_to_u32(coords.y))
     }
 
     fn get_mut(&mut self, coords: Index2D) -> &mut P {
-        self.get_pixel_mut(coords.x as u32, coords.y as u32)
+        self.get_pixel_mut(usize_to_u32(coords.x), usize_to_u32(coords.y))
     }
 }
 
-/// Types implementing [SaveToImage] support a method [SaveToImage::save_to_image].
+/// Types implementing [`SaveToImage`] support a method [`SaveToImage::save_to_image`].
 pub trait SaveToImage {
     /// Save an image to `file_name`.
     fn save_to_image(&self, file_path: &Path);
@@ -84,7 +88,7 @@ impl<const T: usize> SaveToImage for RelativeTerrainMap<u16, T> {
 
 impl<const T: usize> SaveToImage for RelativeTerrainMap<Vec3<u8>, T> {
     fn save_to_image(&self, file_path: &Path) {
-        let mut img = ImageBuffer::new(T as u32, T as u32);
+        let mut img = ImageBuffer::new(usize_to_u32(T), usize_to_u32(T));
 
         for coords in self.iter_grid() {
             let new = self.get_value(coords);
@@ -97,18 +101,18 @@ impl<const T: usize> SaveToImage for RelativeTerrainMap<Vec3<u8>, T> {
     }
 }
 
-/// Calculates the min and max values of the [RelativeTerrainMap].
-fn calculate_min_max<U: RelativeTo, const T: usize>(map: &RelativeTerrainMap<U, T>) -> (f32, f32)
+/// Calculates the min and max values of the [`RelativeTerrainMap`].
+fn calculate_min_max<U: RelativeTo, const T: usize>(map: &RelativeTerrainMap<U, T>) -> (f64, f64)
 where
     f64: From<U>,
 {
-    let mut min_value = f32::MAX;
-    let mut max_value = f32::MIN;
+    let mut min_value = f64::MAX;
+    let mut max_value = f64::MIN;
 
     for coords in map.iter_grid() {
         let value = map.get_value(coords);
-        min_value = min_value.min(f64::from(value) as f32);
-        max_value = max_value.max(f64::from(value) as f32);
+        min_value = min_value.min(f64::from(value));
+        max_value = max_value.max(f64::from(value));
     }
 
     (min_value, max_value)
@@ -116,14 +120,17 @@ where
 
 impl<const T: usize> SaveToImage for RelativeTerrainMap<u8, T> {
     fn save_to_image(&self, file_path: &Path) {
-        let mut img = ImageBuffer::new(T as u32, T as u32);
+        let mut img = ImageBuffer::new(usize_to_u32(T), usize_to_u32(T));
 
         let (min_value, max_value) = calculate_min_max(self);
 
         for coords in self.iter_grid() {
-            let value = self.get_value(coords) as f32;
-            let scaled = (value - min_value) as f32 / (max_value - min_value);
-            *img.get_mut(coords) = Luma::from([(scaled * 255.) as u8]);
+            let value = f64::from(self.get_value(coords));
+            let scaled = (value - min_value) / (max_value - min_value);
+            let scaled = (scaled * 255.0).clamp(0.0, 255.0);
+            let as_text = format!("{scaled:.0}");
+            let as_u8 = as_text.parse::<u8>().expect("scaled value within 0..=255");
+            *img.get_mut(coords) = Luma::from([as_u8]);
         }
 
         save_resized_image::<T, _>(img, file_path, DEFAULT_SCALE_FACTOR)
@@ -134,20 +141,23 @@ impl<const T: usize> SaveToImage for RelativeTerrainMap<u8, T> {
 
 impl<const T: usize> SaveToImage for RelativeTerrainMap<i32, T> {
     fn save_to_image(&self, file_path: &Path) {
-        let mut img = ImageBuffer::new(T as u32, T as u32);
+        let mut img = ImageBuffer::new(usize_to_u32(T), usize_to_u32(T));
 
         let (min_value, max_value) = calculate_min_max(self);
 
         for coords in self.iter_grid() {
-            let value = self.get_value(coords) as f32;
-            let scaled = (value - min_value) as f32 / (max_value - min_value);
-            let as_u8 = (scaled * 255.) as u8;
+            let value = f64::from(self.get_value(coords));
+            let scaled = (value - min_value) / (max_value - min_value);
+            let as_text = format!("{:.0}", (scaled * 255.0).clamp(0.0, 255.0));
+            let as_u8 = as_text.parse::<u8>().expect("scaled value within 0..=255");
             if self.has_difference(coords) {
-                *img.get_mut(coords) = Rgb::from([
-                    (as_u8 as f32 * 0.98) as u8,
-                    (as_u8 as f32 * 1.04) as u8,
-                    (as_u8 as f32 * 0.98) as u8,
-                ]);
+                let dark = format!("{:.0}", (f64::from(as_u8) * 0.98).clamp(0.0, 255.0))
+                    .parse::<u8>()
+                    .expect("dark value within 0..=255");
+                let light = format!("{:.0}", (f64::from(as_u8) * 1.04).clamp(0.0, 255.0))
+                    .parse::<u8>()
+                    .expect("light value within 0..=255");
+                *img.get_mut(coords) = Rgb::from([dark, light, dark]);
             } else {
                 *img.get_mut(coords) = Rgb::from([as_u8, as_u8, as_u8]);
             }
@@ -159,8 +169,8 @@ impl<const T: usize> SaveToImage for RelativeTerrainMap<i32, T> {
     }
 }
 
-/// Saves an image of the conflicts between the `lhs` [RelativeTerrainMap] and
-/// the `rhs` [RelativeTerrainMap] if any exist.
+/// Saves an image of the conflicts between the `lhs` [`RelativeTerrainMap`] and
+/// the `rhs` [`RelativeTerrainMap`] if any exist.
 pub fn save_image<U: RelativeTo + ConflictResolver, const T: usize>(
     merged_lands_dir: &Path,
     coords: Vec2<i32>,
@@ -180,12 +190,12 @@ pub fn save_image<U: RelativeTo + ConflictResolver, const T: usize>(
         return;
     };
 
-    let mut diff_img = ImageBuffer::new(T as u32, T as u32);
+    let mut diff_img = ImageBuffer::new(usize_to_u32(T), usize_to_u32(T));
 
     let mut num_major_conflicts = 0;
     let mut num_minor_conflicts = 0;
 
-    let params = Default::default();
+    let params = crate::merge::conflict::ConflictParams::default();
 
     for coords in lhs.iter_grid() {
         let actual = lhs.get_value(coords);
@@ -231,11 +241,12 @@ pub fn save_image<U: RelativeTo + ConflictResolver, const T: usize>(
     }
 
     // TODO(dvd): #mvp Read thresholds from config.
-    let minor_conflict_threshold = (T * T) as f32 * 0.02;
-    let major_conflict_threshold = (T * T) as f32 * 0.001;
+    let num_cells = T * T;
+    let minor_conflict_threshold = (num_cells / 50).max(1);
+    let major_conflict_threshold = (num_cells / 1000).max(1);
 
-    let mut should_skip = num_minor_conflicts < minor_conflict_threshold as usize
-        && num_major_conflicts < major_conflict_threshold as usize;
+    let mut should_skip = num_minor_conflicts < minor_conflict_threshold
+        && num_major_conflicts < major_conflict_threshold;
 
     // TODO(dvd): #mvp Configure this too.
     if value == "vertex_colors" || value == "vertex_normals" {
@@ -251,7 +262,7 @@ pub fn save_image<U: RelativeTo + ConflictResolver, const T: usize>(
         num_major_conflicts,
         num_minor_conflicts,
         if should_skip {
-            "".to_string()
+            String::new()
         } else {
             bold_red(" *")
         }
@@ -297,7 +308,7 @@ pub fn save_image<U: RelativeTo + ConflictResolver, const T: usize>(
     }
 }
 
-/// Saves images of conflicts between [LandscapeDiff] `reference` and `plugin`.
+/// Saves images of conflicts between [`LandscapeDiff`] `reference` and `plugin`.
 fn save_landscape_images(
     merged_lands_dir: &Path,
     parsed_plugin: &ParsedPlugin,
@@ -343,7 +354,7 @@ fn save_landscape_images(
     );
 }
 
-/// Saves images of conflicts between [LandmassDiff] `reference` and all modded landmasses.
+/// Saves images of conflicts between [`LandmassDiff`] `reference` and all modded landmasses.
 pub fn save_landmass_images(
     merged_lands_dir: &Path,
     reference: &LandmassDiff,

@@ -6,8 +6,13 @@ use crate::merge::relative_terrain_map::RelativeTerrainMap;
 use crate::merge::relative_to::RelativeTo;
 use crate::LandmassDiff;
 
-/// Adds any conflicts between the `lhs` [RelativeTerrainMap] and
-/// the `rhs` [RelativeTerrainMap] to the `vertex_colors`.
+const MAJOR_COLOR: Vec3<u8> = Vec3::new(255u8, 0, 0);
+const MINOR_COLOR: Vec3<u8> = Vec3::new(255u8, 255u8, 0);
+const MODIFIED_COLOR: Vec3<u8> = Vec3::new(0, 255u8, 0);
+const UNMODIFIED_COLOR: Vec3<u8> = Vec3::new(0, 0, 0);
+
+/// Adds any conflicts between the `lhs` [`RelativeTerrainMap`] and
+/// the `rhs` [`RelativeTerrainMap`] to the `vertex_colors`.
 pub fn add_vertex_colors<U: RelativeTo + ConflictResolver, const T: usize>(
     lhs: Option<&RelativeTerrainMap<U, T>>,
     rhs: Option<&RelativeTerrainMap<U, T>>,
@@ -25,12 +30,7 @@ pub fn add_vertex_colors<U: RelativeTo + ConflictResolver, const T: usize>(
         return;
     };
 
-    let params = Default::default();
-
-    const MAJOR_COLOR: Vec3<u8> = Vec3::new(255u8, 0, 0);
-    const MINOR_COLOR: Vec3<u8> = Vec3::new(255u8, 255u8, 0);
-    const MODIFIED_COLOR: Vec3<u8> = Vec3::new(0, 255u8, 0);
-    const UNMODIFIED_COLOR: Vec3<u8> = Vec3::new(0, 0, 0);
+    let params = crate::merge::conflict::ConflictParams::default();
 
     for coords in lhs.iter_grid() {
         let actual = lhs.get_value(coords);
@@ -60,7 +60,7 @@ pub fn add_vertex_colors<U: RelativeTo + ConflictResolver, const T: usize>(
     }
 }
 
-/// Add vertex colors to [LandscapeDiff] `reference` for any conflict found with `plugin`.
+/// Add vertex colors to [`LandscapeDiff`] `reference` for any conflict found with `plugin`.
 fn add_debug_vertex_colors_to_landscape(reference: &mut LandscapeDiff, plugin: &LandscapeDiff) {
     add_vertex_colors(
         reference.height_map.as_ref(),
@@ -69,7 +69,7 @@ fn add_debug_vertex_colors_to_landscape(reference: &mut LandscapeDiff, plugin: &
     );
 }
 
-/// Add vertex colors to [LandmassDiff] `reference` for any conflict found with `plugin`.
+/// Add vertex colors to [`LandmassDiff`] `reference` for any conflict found with `plugin`.
 pub fn add_debug_vertex_colors_to_landmass(reference: &mut LandmassDiff, plugin: &LandmassDiff) {
     for (coords, land) in plugin.sorted() {
         let merged_land = reference.land.get_mut(coords).expect("safe");

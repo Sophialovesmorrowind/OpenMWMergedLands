@@ -9,11 +9,11 @@ use crate::merge::resolve_conflict_strategy::ResolveConflictStrategy;
 use crate::ParsedPlugin;
 use log::trace;
 
-/// Types implementing [MergeStrategy] can create a new [RelativeTerrainMap] by combining
-/// the `lhs` and `rhs` [RelativeTerrainMap]. The method for combining the maps is determined
-/// by the type implementing [MergeStrategy::apply].
+/// Types implementing [`MergeStrategy`] can create a new [`RelativeTerrainMap`] by combining
+/// the `lhs` and `rhs` [`RelativeTerrainMap`]. The method for combining the maps is determined
+/// by the type implementing [`MergeStrategy::apply`].
 pub trait MergeStrategy {
-    /// Combine the `lhs` and `rhs` [RelativeTerrainMap] into a new [RelativeTerrainMap].
+    /// Combine the `lhs` and `rhs` [`RelativeTerrainMap`] into a new [`RelativeTerrainMap`].
     fn apply<U: RelativeTo + ConflictResolver, const T: usize>(
         &self,
         coords: Vec2<i32>,
@@ -26,9 +26,9 @@ pub trait MergeStrategy {
         <U as RelativeTo>::Delta: ConflictResolver;
 }
 
-/// Given optional `old` and `new` [RelativeTerrainMap], return an [OptionalTerrainMap]
+/// Given optional `old` and `new` [`RelativeTerrainMap`], return an [`OptionalTerrainMap`]
 /// representing either [None], the `old`, the `new`, or the merged combination of `old`
-/// and `new` from applying the [MergeStrategy] `strategy` when both `old` and `new` are
+/// and `new` from applying the [`MergeStrategy`] `strategy` when both `old` and `new` are
 /// [Some].
 fn apply_strategy<U: RelativeTo + ConflictResolver, const T: usize>(
     coords: Vec2<i32>,
@@ -41,28 +41,20 @@ fn apply_strategy<U: RelativeTo + ConflictResolver, const T: usize>(
 where
     <U as RelativeTo>::Delta: ConflictResolver,
 {
-    if old.is_some() && new.is_some() {
-        let merged = strategy.apply(
-            coords,
-            plugin,
-            value,
-            old.as_ref().expect("safe"),
-            new.as_ref().expect("safe"),
-        );
-
-        Some(merged)
-    } else if old.is_some() {
-        old.cloned()
-    } else if new.is_some() {
-        new.cloned()
-    } else {
-        None
+    match (old, new) {
+        (Some(old_map), Some(new_map)) => {
+            let merged = strategy.apply(coords, plugin, value, old_map, new_map);
+            Some(merged)
+        }
+        (Some(old_map), None) => Some(old_map.clone()),
+        (None, Some(new_map)) => Some(new_map.clone()),
+        (None, None) => None,
     }
 }
 
-/// Given optional `old` and `new` [RelativeTerrainMap], and a desired [ConflictStrategy],
-/// apply the desired [MergeStrategy] as indicated by the `conflict_strategy`.
-/// If `conflict_strategy` is [ConflictStrategy::Auto], use the [MergeStrategy] `auto_strategy`.
+/// Given optional `old` and `new` [`RelativeTerrainMap`], and a desired [`ConflictStrategy`],
+/// apply the desired [`MergeStrategy`] as indicated by the `conflict_strategy`.
+/// If `conflict_strategy` is [`ConflictStrategy::Auto`], use the [`MergeStrategy`] `auto_strategy`.
 pub fn apply_preferred_strategy<U: RelativeTo + ConflictResolver, const T: usize>(
     coords: Vec2<i32>,
     plugin: &ParsedPlugin,
@@ -75,9 +67,9 @@ pub fn apply_preferred_strategy<U: RelativeTo + ConflictResolver, const T: usize
 where
     <U as RelativeTo>::Delta: ConflictResolver,
 {
-    let resolve_strategy: ResolveConflictStrategy = Default::default();
-    let overwrite_strategy: OverwriteStrategy = Default::default();
-    let ignore_strategy: IgnoreStrategy = Default::default();
+    let resolve_strategy = ResolveConflictStrategy::default();
+    let overwrite_strategy = OverwriteStrategy::default();
+    let ignore_strategy = IgnoreStrategy::default();
 
     if conflict_strategy != ConflictStrategy::Auto {
         trace!(
@@ -104,8 +96,8 @@ where
     }
 }
 
-/// Given optional `old` and `new` [RelativeTerrainMap], and a desired [ConflictStrategy],
-/// apply the desired [MergeStrategy] as indicated by the `conflict_strategy`.
+/// Given optional `old` and `new` [`RelativeTerrainMap`], and a desired [`ConflictStrategy`],
+/// apply the desired [`MergeStrategy`] as indicated by the `conflict_strategy`.
 pub fn apply_merge_strategy<U: RelativeTo + ConflictResolver, const T: usize>(
     coords: Vec2<i32>,
     plugin: &ParsedPlugin,
@@ -117,8 +109,8 @@ pub fn apply_merge_strategy<U: RelativeTo + ConflictResolver, const T: usize>(
 where
     <U as RelativeTo>::Delta: ConflictResolver,
 {
-    let resolve_strategy: ResolveConflictStrategy = Default::default();
-    let overwrite_strategy: OverwriteStrategy = Default::default();
+    let resolve_strategy = ResolveConflictStrategy::default();
+    let overwrite_strategy = OverwriteStrategy::default();
 
     match value {
         "height_map" | "world_map_data" | "vertex_colors" | "vertex_normals" => {
@@ -143,7 +135,7 @@ where
         ),
         _ => {
             // TODO(dvd): #refactor Why aren't these enums?
-            panic!("unexpected value {}", value);
+            panic!("unexpected value {value}");
         }
     }
 }

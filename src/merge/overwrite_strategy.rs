@@ -7,7 +7,7 @@ use crate::merge::relative_to::RelativeTo;
 use crate::ParsedPlugin;
 
 #[derive(Default)]
-/// Implements [MergeStrategy] to overwrite any conflicts with the newest change.
+/// Implements [`MergeStrategy`] to overwrite any conflicts with the newest change.
 pub struct OverwriteStrategy {}
 
 impl MergeStrategy for OverwriteStrategy {

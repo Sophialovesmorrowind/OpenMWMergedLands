@@ -7,7 +7,7 @@ use crate::merge::relative_to::RelativeTo;
 use crate::ParsedPlugin;
 
 #[derive(Default)]
-/// Implements [MergeStrategy] to ignore any conflicts by dropping the newest change.
+/// Implements [`MergeStrategy`] to ignore any conflicts by dropping the newest change.
 pub struct IgnoreStrategy {}
 
 impl MergeStrategy for IgnoreStrategy {

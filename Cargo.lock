@@ -460,6 +460,7 @@ dependencies = [
  "const-default",
  "image",
  "log",
+ "num-traits",
  "openmw-config",
  "serde",
  "simplelog",

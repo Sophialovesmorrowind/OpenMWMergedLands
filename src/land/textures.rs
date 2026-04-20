@@ -8,8 +8,8 @@ use std::sync::Arc;
 use tes3::esp::{LandscapeTexture, ObjectFlags};
 
 #[derive(Eq, PartialEq, Hash, Default, Copy, Clone, Debug, Ord, PartialOrd)]
-/// The index stored in the `texture_indices` [TerrainMap].
-/// Can be converted to [IndexLTEX].
+/// The index stored in the `texture_indices` [`TerrainMap`].
+/// Can be converted to [`IndexLTEX`].
 pub struct IndexVTEX(u16);
 
 impl IndexVTEX {
@@ -17,7 +17,7 @@ impl IndexVTEX {
         Self(value)
     }
 
-    pub fn as_u16(&self) -> u16 {
+    pub fn as_u16(self) -> u16 {
         self.0
     }
 }
@@ -36,17 +36,17 @@ impl RelativeTo for IndexVTEX {
     type Delta = i32;
 
     fn subtract(lhs: Self, rhs: Self) -> Self::Delta {
-        (lhs.0 as Self::Delta) - (rhs.0 as Self::Delta)
+        Self::Delta::from(lhs.0) - Self::Delta::from(rhs.0)
     }
 
     fn add(lhs: Self, rhs: Self::Delta) -> Self {
-        Self::new(((lhs.0 as Self::Delta) + rhs) as u16)
+        Self::new(u16::try_from(Self::Delta::from(lhs.0) + rhs).expect("texture index overflow"))
     }
 }
 
 #[derive(Eq, PartialEq, Hash, Default, Copy, Clone, Debug, Ord, PartialOrd)]
-/// The index stored in each [LandscapeTexture].
-/// Can be converted to [IndexVTEX].
+/// The index stored in each [`LandscapeTexture`].
+/// Can be converted to [`IndexVTEX`].
 pub struct IndexLTEX(u16);
 
 impl IndexLTEX {
@@ -54,7 +54,7 @@ impl IndexLTEX {
         Self(value)
     }
 
-    pub fn as_u16(&self) -> u16 {
+    pub fn as_u16(self) -> u16 {
         self.0
     }
 }
@@ -71,14 +71,13 @@ impl TryFrom<IndexVTEX> for IndexLTEX {
     fn try_from(value: IndexVTEX) -> Result<Self, Self::Error> {
         if value.0 == 0 {
             bail!("cannot convert default texture");
-        } else {
-            Ok(Self::new(value.0 - 1))
         }
+        Ok(Self::new(value.0 - 1))
     }
 }
 
-/// [RemappedTextures] allows remapping terrain indices.
-/// Supports up to [u16::MAX] textures.
+/// [`RemappedTextures`] allows remapping terrain indices.
+/// Supports up to [`u16::MAX`] textures.
 pub struct RemappedTextures {
     inner: HashMap<IndexVTEX, IndexVTEX>,
 }
@@ -91,12 +90,12 @@ impl RemappedTextures {
         }
     }
 
-    /// Creates a new [RemappedTextures] with size to hold [KnownTextures].
+    /// Creates a new [`RemappedTextures`] with size to hold [`KnownTextures`].
     pub fn new(known_textures: &KnownTextures) -> Self {
         Self::with_capacity(known_textures.len())
     }
 
-    /// Creates a new [RemappedTextures] from the `used_ids`.
+    /// Creates a new [`RemappedTextures`] from the `used_ids`.
     pub fn from(used_ids: &[bool]) -> Self {
         assert!(used_ids[0]);
 
@@ -122,45 +121,45 @@ impl RemappedTextures {
         if index == IndexVTEX::default() {
             Some(index)
         } else {
-            self.inner.get(&index).cloned()
+            self.inner.get(&index).copied()
         }
     }
 }
 
-/// A [LandscapeTexture] and the [ParsedPlugin] that last added or modified it.
+/// A [`LandscapeTexture`] and the [`ParsedPlugin`] that last added or modified it.
 pub struct KnownTexture {
     inner: LandscapeTexture,
     pub plugin: Arc<ParsedPlugin>,
 }
 
 impl KnownTexture {
-    /// The [String] `id` of the [LandscapeTexture].
-    /// This uniquely identifies the [KnownTexture] within the [KnownTextures].
+    /// The [String] `id` of the [`LandscapeTexture`].
+    /// This uniquely identifies the [`KnownTexture`] within the [`KnownTextures`].
     pub fn id(&self) -> &String {
         &self.inner.id
     }
 
-    /// The [u16] `index` of the [LandscapeTexture].
-    /// This uniquely identifies the texture within the `texture_indices` field of [tes3::esp::Landscape]
-    /// or [crate::land::landscape_diff::LandscapeDiff].
+    /// The [u16] `index` of the [`LandscapeTexture`].
+    /// This uniquely identifies the texture within the `texture_indices` field of [`tes3::esp::Landscape`]
+    /// or [`crate::land::landscape_diff::LandscapeDiff`].
     pub fn index(&self) -> IndexLTEX {
         texture_index(&self.inner)
     }
 
-    /// Clones the [LandscapeTexture].
+    /// Clones the [`LandscapeTexture`].
     pub fn clone_landscape_texture(&self) -> LandscapeTexture {
         self.inner.clone()
     }
 }
 
-/// [KnownTextures] stores a map of [KnownTexture] accessible by the [KnownTexture::id].
-/// Supports up to [u16::MAX] textures.
+/// [`KnownTextures`] stores a map of [`KnownTexture`] accessible by the [`KnownTexture::id`].
+/// Supports up to [`u16::MAX`] textures.
 pub struct KnownTextures {
     inner: HashMap<String, KnownTexture>,
 }
 
-/// Returns [u16] `index` of the [LandscapeTexture].
-/// Asserts if the index cannot be found or exceeds [u16::MAX].
+/// Returns [u16] `index` of the [`LandscapeTexture`].
+/// Asserts if the index cannot be found or exceeds [`u16::MAX`].
 fn texture_index(texture: &LandscapeTexture) -> IndexLTEX {
     IndexLTEX::new(
         texture
@@ -174,35 +173,29 @@ fn texture_index(texture: &LandscapeTexture) -> IndexLTEX {
 impl KnownTextures {
     pub fn new() -> KnownTextures {
         Self {
-            inner: Default::default(),
+            inner: HashMap::default(),
         }
     }
 
-    /// Returns the [KnownTexture] values sorted by [KnownTexture::index].
+    /// Returns the [`KnownTexture`] values sorted by [`KnownTexture::index`].
     pub fn sorted(&self) -> Vec<&KnownTexture> {
         let mut textures: Vec<_> = self.inner.values().collect();
         textures.sort_by_key(|texture| texture.index());
         textures
     }
 
-    /// Update the [KnownTexture] matching `texture` with changes from [ParsedPlugin] `plugin`.
+    /// Update the [`KnownTexture`] matching `texture` with changes from [`ParsedPlugin`] `plugin`.
     pub fn update_texture(&mut self, plugin: &Arc<ParsedPlugin>, texture: &LandscapeTexture) {
         let known_texture = self.inner.get_mut(&texture.id).expect("unknown texture ID");
         if let Some(file_name) = &texture.file_name {
-            if known_texture
-                .inner
-                .file_name
-                .as_ref()
-                .map(|old_file_name| old_file_name != file_name)
-                .unwrap_or(true)
-            {
+            if known_texture.inner.file_name.as_ref() != Some(file_name) {
                 known_texture.inner.file_name = Some(file_name.into());
                 known_texture.plugin = plugin.clone();
             }
         }
     }
 
-    /// Add a new [KnownTexture] matching `texture` from [ParsedPlugin] `plugin`.
+    /// Add a new [`KnownTexture`] matching `texture` from [`ParsedPlugin`] `plugin`.
     /// Returns a tuple corresponding to the `(old_index, new_index)`.
     fn add_texture(
         &mut self,
@@ -220,8 +213,8 @@ impl KnownTextures {
         (old_index, new_index)
     }
 
-    /// Add a new [KnownTexture] matching `texture` from [ParsedPlugin] `plugin`.
-    /// The [RemappedTextures] is updated.
+    /// Add a new [`KnownTexture`] matching `texture` from [`ParsedPlugin`] `plugin`.
+    /// The [`RemappedTextures`] is updated.
     pub fn add_remapped_texture(
         &mut self,
         plugin: &Arc<ParsedPlugin>,
@@ -244,12 +237,12 @@ impl KnownTextures {
         }
     }
 
-    /// Remove all textures from [KnownTextures] that are not present in the
-    /// [RemappedTextures].
+    /// Remove all textures from [`KnownTextures`] that are not present in the
+    /// [`RemappedTextures`].
     pub fn remove_unused(&mut self, remapped_textures: &RemappedTextures) -> usize {
         let mut unused_ids = Vec::new();
 
-        for (id, texture) in self.inner.iter_mut() {
+        for (id, texture) in &mut self.inner {
             if let Some(new_idx) = remapped_textures
                 .try_remapped_index(texture.index().into())
                 .map(|idx| IndexLTEX::try_from(idx).expect("safe"))
@@ -269,27 +262,27 @@ impl KnownTextures {
         let num_removed_ids = unused_ids.len();
 
         for id in unused_ids {
-            trace!("Removing unused texture {}", id);
+            trace!("Removing unused texture {id}");
             self.inner.remove(&id);
         }
 
         num_removed_ids
     }
 
-    /// The number of [KnownTexture].
+    /// The number of [`KnownTexture`].
     pub fn len(&self) -> usize {
         let len = self.inner.len();
         assert!(len < u16::MAX as usize, "exceeded 65535 textures");
         len
     }
 
-    /// The next [KnownTexture::index].
+    /// The next [`KnownTexture::index`].
     fn next_texture_index(&self) -> IndexLTEX {
         IndexLTEX::new(self.len().try_into().expect("safe"))
     }
 
-    /// Add a new [KnownTexture] matching `texture` from [ParsedPlugin] `plugin`.
-    /// The new index will be set to [Self::next_texture_index].
+    /// Add a new [`KnownTexture`] matching `texture` from [`ParsedPlugin`] `plugin`.
+    /// The new index will be set to [`Self::next_texture_index`].
     fn add_next_texture(
         &mut self,
         plugin: &Arc<ParsedPlugin>,

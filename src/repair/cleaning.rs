@@ -54,7 +54,13 @@ fn has_any_difference(reference: &LandscapeDiff, plugin: &LandscapeDiff) -> bool
         )
 }
 
-/// Remove any unmodified [crate::LandscapeDiff] from the [LandmassDiff].
+fn update_known_textures(plugin: &Arc<ParsedPlugin>, known_textures: &mut KnownTextures) {
+    for texture in plugin.records.objects_of_type::<LandscapeTexture>() {
+        known_textures.update_texture(plugin, texture);
+    }
+}
+
+/// Remove any unmodified [`crate::LandscapeDiff`] from the [`LandmassDiff`].
 pub fn clean_landmass_diff(
     landmass: &mut LandmassDiff,
     modded_landmasses: &[LandmassDiff],
@@ -63,7 +69,7 @@ pub fn clean_landmass_diff(
     assert_eq!(repair_landmass_seams(landmass), 0);
 
     let mut modded_landmasses_map = HashMap::with_capacity(modded_landmasses.len());
-    for modded_landmass in modded_landmasses.iter() {
+    for modded_landmass in modded_landmasses {
         modded_landmasses_map.insert(modded_landmass.plugin.name.clone(), modded_landmass);
     }
 
@@ -71,12 +77,12 @@ pub fn clean_landmass_diff(
     let mut num_unmodified_from_reference = 0;
     let mut num_unmodified_from_plugin = 0;
 
-    for (coords, land) in landmass.land.iter_mut() {
+    for (coords, land) in &mut landmass.land {
         if !land.is_modified() {
             unmodified.push(*coords);
             num_unmodified_from_reference += 1;
             continue;
-        };
+        }
 
         let modded_landmass_land = if is_openmw_mode {
             // In OpenMW mode, ESPs can depend on ESPs. For cleanup purposes we want the final
@@ -116,23 +122,17 @@ pub fn clean_landmass_diff(
         }
     }
 
-    debug!(
-        "Removing {} LAND records unmodified from reference",
-        num_unmodified_from_reference
-    );
+    debug!("Removing {num_unmodified_from_reference} LAND records unmodified from reference");
 
-    debug!(
-        "Removing {} LAND records unmodified from plugins",
-        num_unmodified_from_plugin
-    );
+    debug!("Removing {num_unmodified_from_plugin} LAND records unmodified from plugins");
 
     for coords in unmodified.drain(..) {
         landmass.land.remove(&coords);
     }
 }
 
-/// Remove any unused [crate::land::textures::KnownTexture] from the [KnownTextures].
-/// Returns [RemappedTextures] for anything that was not removed.
+/// Remove any unused [`crate::land::textures::KnownTexture`] from the [`KnownTextures`].
+/// Returns [`RemappedTextures`] for anything that was not removed.
 pub fn clean_known_textures(
     parsed_plugins: &ParsedPlugins,
     landmass: &LandmassDiff,
@@ -143,19 +143,13 @@ pub fn clean_known_textures(
         "exceeded maximum number of textures"
     );
 
-    fn update_known_textures(plugin: &Arc<ParsedPlugin>, known_textures: &mut KnownTextures) {
-        for texture in plugin.records.objects_of_type::<LandscapeTexture>() {
-            known_textures.update_texture(plugin, texture);
-        }
-    }
-
     // Make sure all LTEX records have the correct filenames.
 
-    for master in parsed_plugins.masters.iter() {
+    for master in &parsed_plugins.masters {
         update_known_textures(master, known_textures);
     }
 
-    for plugin in parsed_plugins.plugins.iter() {
+    for plugin in &parsed_plugins.plugins {
         update_known_textures(plugin, known_textures);
     }
 
@@ -173,7 +167,7 @@ pub fn clean_known_textures(
         let mut first_invalid_texture_index = None;
         for coords in texture_indices.iter_grid() {
             let key = texture_indices.get_value(coords);
-            let idx = key.as_u16() as usize;
+            let idx = usize::from(key.as_u16());
             if idx < used_ids.len() {
                 used_ids[idx] = true;
             } else {
@@ -198,7 +192,7 @@ pub fn clean_known_textures(
     let remapped_textures = RemappedTextures::from(&used_ids);
     let num_removed_ids = known_textures.remove_unused(&remapped_textures);
 
-    debug!("Removing {} unused LTEX records", num_removed_ids);
+    debug!("Removing {num_removed_ids} unused LTEX records");
     debug!("Remapping {} LTEX records", known_textures.len());
 
     remapped_textures

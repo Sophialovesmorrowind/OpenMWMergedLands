@@ -39,7 +39,7 @@ mod merge;
 mod repair;
 mod term_style;
 
-/// A [Landmass] represents a collection of [Landscape] and the associated [ParsedPlugin].
+/// A [Landmass] represents a collection of [Landscape] and the associated [`ParsedPlugin`].
 pub struct Landmass {
     plugin: Arc<ParsedPlugin>,
     land: HashMap<Vec2<i32>, Landscape>,
@@ -78,7 +78,7 @@ impl Clone for Landmass {
     }
 }
 
-/// A [LandmassDiff] represents a collection of [LandscapeDiff] and the associated [ParsedPlugin].
+/// A [`LandmassDiff`] represents a collection of [`LandscapeDiff`] and the associated [`ParsedPlugin`].
 pub struct LandmassDiff {
     plugin: Arc<ParsedPlugin>,
     land: HashMap<Vec2<i32>, LandscapeDiff>,
@@ -92,7 +92,7 @@ impl LandmassDiff {
         }
     }
 
-    /// Returns the [LandscapeDiff] entries ordered by `x` and `y` coordinates.
+    /// Returns the [`LandscapeDiff`] entries ordered by `x` and `y` coordinates.
     fn sorted(&self) -> Vec<(&Vec2<i32>, &LandscapeDiff)> {
         let mut entries: Vec<_> = self.land.iter().collect();
         entries.sort_by_key(|f| (f.0.x, f.0.y));
@@ -155,25 +155,25 @@ mod cli {
 
         #[arg(long, conflicts_with = "openmw_cfg")]
         /// Enables classic Morrowind mode using `Data Files` + `Morrowind.ini`.
-        /// When this is not set, the tool defaults to OpenMW mode.
+        /// When this is not set, the tool defaults to `OpenMW` mode.
         pub vanilla: bool,
 
         #[arg(long, conflicts_with = "vanilla")]
         /// Uses the `openmw.cfg` at this path instead of the platform-default location.
         /// The path may be either a directory containing `openmw.cfg` or a direct path to the
-        /// file. OpenMW mode is the default when `--vanilla` is not set.
+        /// file. `OpenMW` mode is the default when `--vanilla` is not set.
         pub openmw_cfg: Option<String>,
 
         #[arg(long)]
         /// The name of the output file. This will be written to `output_file_dir`.
-        /// Defaults to `Merged Lands.omwaddon` in OpenMW mode and `Merged Lands.esp` in
+        /// Defaults to `Merged Lands.omwaddon` in `OpenMW` mode and `Merged Lands.esp` in
         /// `--vanilla` mode.
         pub output_file: Option<String>,
 
         #[arg(long)]
         /// The directory for the `output_file`.
         /// If not provided, the resolution order is:
-        /// `merged_lands.toml`, OpenMW `data-local`, then `data_files_dir` in `--vanilla` mode.
+        /// `merged_lands.toml`, `OpenMW` `data-local`, then `data_files_dir` in `--vanilla` mode.
         output_file_dir: Option<String>,
 
         #[arg(required = false)]
@@ -226,9 +226,9 @@ mod cli {
             self.log_level != CliLevelFilter::Off
         }
 
-        pub fn merged_lands_dir(&self) -> Result<PathBuf> {
+        pub fn merged_lands_dir(&self) -> PathBuf {
             let dir = &self.merged_lands_dir;
-            Ok(PathBuf::from(dir))
+            PathBuf::from(dir)
         }
 
         pub fn data_files_dir(&self) -> Result<PathBuf> {
@@ -243,7 +243,7 @@ mod cli {
             !self.vanilla
         }
 
-        /// Resolves the OpenMW config source. OpenMW is the default unless `--vanilla` is used,
+        /// Resolves the `OpenMW` config source. `OpenMW` is the default unless `--vanilla` is used,
         /// and `--openmw-cfg` overrides the platform-default config location.
         pub fn openmw_cfg_source(&self) -> Option<OpenMWCfgSource> {
             if self.vanilla {
@@ -255,7 +255,7 @@ mod cli {
             }
         }
 
-        /// Returns the output directory specified on the CLI, if any. In OpenMW mode when this
+        /// Returns the output directory specified on the CLI, if any. In `OpenMW` mode when this
         /// is unset, the caller should default to the primary (last) data directory.
         pub fn output_file_dir_override(&self) -> Option<&String> {
             self.output_file_dir.as_ref()
@@ -333,7 +333,7 @@ mod cli {
 use cli::{Cli, SortOrder};
 
 /// Handles CLI arguments, log initialization, and the creation of a worker thread
-/// for running the actual [merge_all] function.
+/// for running the actual [`merge_all`] function.
 fn format_thread_panic(panic: Box<dyn Any + Send + 'static>) -> String {
     match panic.downcast::<String>() {
         Ok(message) => *message,
@@ -354,12 +354,12 @@ fn ensure_output_file_dir_exists(dir: PathBuf, source: &str) -> Result<PathBuf> 
     })?;
 
     ParsedPlugins::check_dir_exists(&dir)
-        .with_context(|| anyhow!("Invalid output file directory from {}", source))?;
+        .with_context(|| anyhow!("Invalid output file directory from {source}"))?;
 
     Ok(dir)
 }
 
-fn main() -> Result<()> {
+fn main() {
     let cli = Cli::read_args();
     let wait_for_exit = cli.wait_for_exit;
 
@@ -397,7 +397,6 @@ fn main() -> Result<()> {
     }
 
     wait_for_user_exit(wait_for_exit);
-    Ok(())
 }
 
 fn wait_for_user_exit(wait_for_exit: bool) {
@@ -408,7 +407,7 @@ fn wait_for_user_exit(wait_for_exit: bool) {
     println!();
     println!("Press Enter to exit.");
     let mut buf = [0; 1];
-    std::io::stdin().read(&mut buf).ok();
+    std::io::stdin().read_exact(&mut buf).ok();
 }
 
 /// The main function.
@@ -437,7 +436,7 @@ fn merge_all(cli: &Cli) -> Result<()> {
     // optional `.mergedlands.toml` if it existed. The Arc<...> is copied into each LandscapeDiff.
     info!(":: Parsing Plugins ::");
 
-    let merged_lands_dir = cli.merged_lands_dir()?;
+    let merged_lands_dir = cli.merged_lands_dir();
     let app_config = MergedLandsConfig::load(&merged_lands_dir)?;
 
     // Determine whether we're in default OpenMW mode (`openmw.cfg`) or classic Morrowind mode
@@ -528,7 +527,7 @@ fn merge_all(cli: &Cli) -> Result<()> {
         reference_landmass.land.len()
     );
 
-    let mut merged_lands = create_merged_lands_from_reference(reference_landmass.clone());
+    let mut merged_lands = create_merged_lands_from_reference(&reference_landmass);
     debug!(
         "Created merged reference baseline in {:?}",
         phase_start.elapsed()
@@ -546,7 +545,7 @@ fn merge_all(cli: &Cli) -> Result<()> {
     //  - Iterate through updated landmass and check for seams on any modified cell.
     info!(":: Merging Lands ::");
 
-    for modded_landmass in modded_landmasses.iter() {
+    for modded_landmass in &modded_landmasses {
         merge_landmass_into(&mut merged_lands, modded_landmass, is_openmw_mode);
     }
 
@@ -564,7 +563,7 @@ fn merge_all(cli: &Cli) -> Result<()> {
     //  - Produce images of the final merge results.
     info!(":: Summarizing Conflicts ::");
 
-    let merged_lands_dir = cli.merged_lands_dir()?;
+    let merged_lands_dir = cli.merged_lands_dir();
     save_landmass_images(&merged_lands_dir, &merged_lands, &modded_landmasses);
     debug!(
         "Saved conflict summary images in {:?}",
@@ -575,7 +574,7 @@ fn merge_all(cli: &Cli) -> Result<()> {
     let debug_vertex_colors = cli.add_debug_vertex_colors;
     if debug_vertex_colors {
         warn!(":: Adding Debug Colors ::");
-        for modded_landmass in modded_landmasses.iter() {
+        for modded_landmass in &modded_landmasses {
             add_debug_vertex_colors_to_landmass(&mut merged_lands, modded_landmass);
         }
     }
@@ -663,8 +662,8 @@ fn merge_all(cli: &Cli) -> Result<()> {
     Ok(())
 }
 
-/// Initializes a [TermLogger] and [WriteLogger]. If the [WriteLogger] cannot be initialized,
-/// then the program will continue with only the [TermLogger].
+/// Initializes a [`TermLogger`] and [`WriteLogger`]. If the [`WriteLogger`] cannot be initialized,
+/// then the program will continue with only the [`TermLogger`].
 fn init_log(cli: &Cli) -> bool {
     let config = ConfigBuilder::default()
         .set_time_level(LevelFilter::Off)
@@ -674,14 +673,10 @@ fn init_log(cli: &Cli) -> bool {
         .set_level_padding(LevelPadding::Right)
         .build();
 
-    let get_log_file_path = || {
+    let get_log_file_path = || -> Result<PathBuf> {
         let merged_lands_dir = cli.merged_lands_dir();
         let log_file_name = &cli.log_file;
-        let log_file_path: Result<PathBuf> = match merged_lands_dir {
-            Ok(path) => Ok([path, PathBuf::from(log_file_name)].iter().collect()),
-            Err(e) => Err(e),
-        };
-        log_file_path
+        Ok(merged_lands_dir.join(log_file_name))
     };
 
     let write_logger = cli.should_write_log_file().then(|| {
@@ -738,7 +733,7 @@ fn init_log(cli: &Cli) -> bool {
     }
 }
 
-/// Copy [Landscape] records from `plugin` and remap the texture indices with [RemappedTextures].
+/// Copy [Landscape] records from `plugin` and remap the texture indices with [`RemappedTextures`].
 fn try_copy_landscape_and_remap_textures(
     plugin: &Arc<ParsedPlugin>,
     remapped_textures: &RemappedTextures,
@@ -783,14 +778,14 @@ fn try_copy_landscape_and_remap_textures(
         landmass.insert_land(coords, plugin, &updated_land);
     }
 
-    if !landmass.land.is_empty() {
-        Some(landmass)
-    } else {
+    if landmass.land.is_empty() {
         None
+    } else {
+        Some(landmass)
     }
 }
 
-/// Creates a [Landmass] from the `plugin` and updates [KnownTextures].
+/// Creates a [Landmass] from the `plugin` and updates [`KnownTextures`].
 fn try_create_landmass(
     plugin: &Arc<ParsedPlugin>,
     known_textures: &mut KnownTextures,
@@ -861,7 +856,7 @@ fn merge_tes3_landscape(lhs: &Landscape, rhs: &Landscape) -> Landscape {
     land
 }
 
-/// Creates a single [Landmass] by calling [merge_tes3_landscape] on all `landmasses`.
+/// Creates a single [Landmass] by calling [`merge_tes3_landscape`] on all `landmasses`.
 fn merge_tes3_landmasses(
     plugin: &Arc<ParsedPlugin>,
     landmasses: impl Iterator<Item = Landmass>,
@@ -869,7 +864,7 @@ fn merge_tes3_landmasses(
     let mut merged_landmass = Landmass::new(plugin.clone());
 
     for landmass in landmasses {
-        for (coords, land) in landmass.land.iter() {
+        for (coords, land) in &landmass.land {
             let merged_land = if let Some(existing) = merged_landmass.land.get(coords) {
                 merge_tes3_landscape(existing, land)
             } else {
@@ -886,8 +881,8 @@ fn merge_tes3_landmasses(
     merged_landmass
 }
 
-/// Given a [ParsedPlugin] and a specific [Landscape], returns [LandData] representing
-/// what should be used when creating or merging a [LandscapeDiff].
+/// Given a [`ParsedPlugin`] and a specific [Landscape], returns [`LandData`] representing
+/// what should be used when creating or merging a [`LandscapeDiff`].
 fn find_allowed_data(plugin: &ParsedPlugin, land: &Landscape) -> LandData {
     let mut allowed_data: LandData = landscape_flags(land).into();
 
@@ -911,10 +906,10 @@ fn find_allowed_data(plugin: &ParsedPlugin, land: &Landscape) -> LandData {
 }
 
 /// Applies the winning LAND state from `next` into `merged`, updating the source plugin for
-/// every cell that `next` contributes. This matches OpenMW's last-loaded record behavior while
+/// every cell that `next` contributes. This matches `OpenMW`'s last-loaded record behavior while
 /// still respecting the current master-before-plugin ordering used by the tool.
 fn merge_tes3_landmass_into(merged: &mut Landmass, next: &Landmass) {
-    for (coords, land) in next.land.iter() {
+    for (coords, land) in &next.land {
         let merged_land = if let Some(existing) = merged.land.get(coords) {
             merge_tes3_landscape(existing, land)
         } else {
@@ -926,12 +921,12 @@ fn merge_tes3_landmass_into(merged: &mut Landmass, next: &Landmass) {
     }
 }
 
-/// Creates a [LandmassDiff] representing the set of [LandscapeDiff] between the
+/// Creates a [`LandmassDiff`] representing the set of [`LandscapeDiff`] between the
 /// `landmass` and `reference` [Landmass].
 fn find_landmass_diff(landmass: &Landmass, reference: &Landmass) -> LandmassDiff {
     let mut landmass_diff = LandmassDiff::new(landmass.plugin.clone());
 
-    for (coords, land) in landmass.land.iter() {
+    for (coords, land) in &landmass.land {
         let reference_land = reference.land.get(coords);
         let allowed_data = find_allowed_data(&landmass.plugin, land);
         let landscape_diff = LandscapeDiff::from_difference(land, reference_land, allowed_data);
@@ -944,7 +939,7 @@ fn find_landmass_diff(landmass: &Landmass, reference: &Landmass) -> LandmassDiff
 /// Builds the initial reference landmass and the plugin diffs used for the final merge.
 ///
 /// In classic mode, every plugin diff is computed against the static master reference.
-/// In OpenMW mode, plugin diffs are computed against the rolling winning LAND state from the
+/// In `OpenMW` mode, plugin diffs are computed against the rolling winning LAND state from the
 /// exact ordered content list, after verifying that any declared masters load earlier.
 fn create_reference_and_modded_landmasses(
     parsed_plugins: &ParsedPlugins,
@@ -962,7 +957,7 @@ fn create_reference_and_modded_landmasses(
         let mut rolling_reference = reference_landmass.clone();
         let mut modded_landmasses = Vec::new();
 
-        for plugin in parsed_plugins.plugins.iter() {
+        for plugin in &parsed_plugins.plugins {
             if plugin.meta.meta_type == MetaType::MergedLands {
                 trace!("Skipping {}", plugin.name);
                 continue;
@@ -981,7 +976,7 @@ fn create_reference_and_modded_landmasses(
         parsed_plugins
             .plugins
             .iter()
-            .flat_map(|plugin| {
+            .filter_map(|plugin| {
                 if plugin.meta.meta_type == MetaType::MergedLands {
                     trace!("Skipping {}", plugin.name);
                     return None;
@@ -996,7 +991,7 @@ fn create_reference_and_modded_landmasses(
     (Arc::new(reference_landmass), modded_landmasses)
 }
 
-/// In OpenMW mode, LAND texture indices are treated as categorical winner data instead of numeric
+/// In `OpenMW` mode, LAND texture indices are treated as categorical winner data instead of numeric
 /// deltas. The config's load order is top-to-bottom, so we effectively apply it bottom-to-top:
 /// the newest plugin wins for the coordinates it actually changed.
 fn merge_openmw_texture_indices(
@@ -1007,9 +1002,10 @@ fn merge_openmw_texture_indices(
         return old.cloned();
     };
 
-    let old_texture_indices = old
-        .map(RelativeTerrainMap::to_terrain)
-        .unwrap_or([[IndexVTEX::default(); 16]; 16]);
+    let old_texture_indices = old.map_or(
+        [[IndexVTEX::default(); 16]; 16],
+        RelativeTerrainMap::to_terrain,
+    );
     let mut merged_texture_indices = old_texture_indices;
     let mut changed_anything = false;
 
@@ -1035,7 +1031,7 @@ fn merge_openmw_texture_indices(
     ))
 }
 
-/// Merges `old` and `new` [LandscapeDiff].
+/// Merges `old` and `new` [`LandscapeDiff`].
 fn merge_landscape_diff(
     plugin: &Arc<ParsedPlugin>,
     old: &LandscapeDiff,
@@ -1117,7 +1113,7 @@ fn merge_landscape_diff(
     merged
 }
 
-/// Merges `plugin` [LandmassDiff] into `merged` [LandmassDiff].
+/// Merges `plugin` [`LandmassDiff`] into `merged` [`LandmassDiff`].
 fn merge_landmass_into(merged: &mut LandmassDiff, plugin: &LandmassDiff, is_openmw_mode: bool) {
     debug!(
         "Merging {} LAND records from {} into {}",
@@ -1140,23 +1136,24 @@ fn merge_landmass_into(merged: &mut LandmassDiff, plugin: &LandmassDiff, is_open
     }
 }
 
-/// Creates a [Landmass] from `parsed_plugins` and updates [KnownTextures].
+/// Creates a [Landmass] from `parsed_plugins` and updates [`KnownTextures`].
 fn create_tes3_landmass<'a>(
     plugin_name: &str,
     parsed_plugins: impl Iterator<Item = &'a Arc<ParsedPlugin>>,
     known_textures: &mut KnownTextures,
 ) -> Landmass {
     let plugin = Arc::new(ParsedPlugin::empty(plugin_name));
-    let master_landmasses = parsed_plugins.flat_map(|esm| try_create_landmass(esm, known_textures));
+    let master_landmasses =
+        parsed_plugins.filter_map(|esm| try_create_landmass(esm, known_textures));
     merge_tes3_landmasses(&plugin, master_landmasses)
 }
 
-/// Creates a [LandmassDiff] representing a set of empty [LandscapeDiff] for the `reference` [Landmass].
-/// Prior to returning, the [LandmassDiff] will be updated by [repair_landmass_seams].
-fn create_merged_lands_from_reference(reference: Arc<Landmass>) -> LandmassDiff {
+/// Creates a [`LandmassDiff`] representing a set of empty [`LandscapeDiff`] for the `reference` [Landmass].
+/// Prior to returning, the [`LandmassDiff`] will be updated by [`repair_landmass_seams`].
+fn create_merged_lands_from_reference(reference: &Landmass) -> LandmassDiff {
     let mut landmass_diff = LandmassDiff::new(reference.plugin.clone());
 
-    for (coords, land) in reference.land.iter() {
+    for (coords, land) in &reference.land {
         let allowed_data = landscape_flags(land).into();
         let plugin = reference.plugins.get(coords).expect("safe");
         let landscape_diff = LandscapeDiff::from_reference(plugin.clone(), land, allowed_data);
@@ -1164,7 +1161,7 @@ fn create_merged_lands_from_reference(reference: Arc<Landmass>) -> LandmassDiff 
         landmass_diff.land.insert(*coords, landscape_diff);
     }
 
-    for (_, land) in landmass_diff.land.iter_mut() {
+    for land in landmass_diff.land.values_mut() {
         assert_eq!(land.plugins.len(), 1);
         let modified_data = land.modified_data();
         let plugin_data = land.plugins.get_mut(0).expect("safe");
@@ -1183,12 +1180,13 @@ mod tests {
     use crate::land::textures::IndexVTEX;
     use crate::merge::relative_terrain_map::{IsModified, RelativeTerrainMap};
     use clap::Parser;
+    use std::fmt::Write;
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
     use tes3::esp::{
         Cell, Header, Landscape, LandscapeFlags, LandscapeTexture, ObjectFlags, Plugin, TES3Object,
-        TextureIndices,
+        TextureIndices, VertexNormals,
     };
 
     fn unique_temp_dir(name: &str) -> PathBuf {
@@ -1258,16 +1256,21 @@ mod tests {
     }
 
     fn fixture_land(coords: (i32, i32), height: i32, texture_index: Option<u16>) -> Landscape {
-        let mut land = Landscape::default();
-        land.flags = ObjectFlags::default();
-        land.grid = coords;
-        land.landscape_flags =
-            LandscapeFlags::USES_VERTEX_HEIGHTS_AND_NORMALS | LandscapeFlags::UNKNOWN;
-
-        let mut height_map = [[height; 65]; 65];
+        let mut height_map = vec![[height; 65]; 65].into_boxed_slice();
         height_map[1][1] = height + 8;
-        land.vertex_heights = Some(calculate_vertex_heights_tes3(&height_map));
-        land.vertex_normals = Some(Default::default());
+        let height_map: Box<[[i32; 65]; 65]> = height_map
+            .try_into()
+            .expect("valid 65x65 fixture height map");
+
+        let mut land = Landscape {
+            flags: ObjectFlags::default(),
+            grid: coords,
+            landscape_flags: LandscapeFlags::USES_VERTEX_HEIGHTS_AND_NORMALS
+                | LandscapeFlags::UNKNOWN,
+            vertex_heights: Some(calculate_vertex_heights_tes3(&height_map)),
+            vertex_normals: Some(VertexNormals::default()),
+            ..Landscape::default()
+        };
 
         if let Some(index) = texture_index {
             land.landscape_flags |= LandscapeFlags::USES_TEXTURES;
@@ -1287,11 +1290,12 @@ mod tests {
     }
 
     fn fixture_ltex(id: &str, index: u32, file_name: &str) -> LandscapeTexture {
-        let mut texture = LandscapeTexture::default();
-        texture.id = id.to_string();
-        texture.index = Some(index);
-        texture.file_name = Some(file_name.to_string());
-        texture
+        LandscapeTexture {
+            id: id.to_string(),
+            index: Some(index),
+            file_name: Some(file_name.to_string()),
+            ..LandscapeTexture::default()
+        }
     }
 
     fn run_vanilla_merge(
@@ -1362,7 +1366,7 @@ mod tests {
             data_local.to_string_lossy(),
         );
         for plugin in plugin_names {
-            cfg.push_str(&format!("content=\"{}\"\n", plugin));
+            writeln!(&mut cfg, "content=\"{plugin}\"").expect("write openmw.cfg content");
         }
         fs::write(&openmw_cfg, cfg).expect("write openmw.cfg");
 

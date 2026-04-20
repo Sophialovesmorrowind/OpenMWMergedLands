@@ -6,7 +6,7 @@ pub struct Index2D {
 }
 
 impl Index2D {
-    /// Returns a new [Index2D] with coordinates `x` and `y`.
+    /// Returns a new [`Index2D`] with coordinates `x` and `y`.
     pub fn new(x: usize, y: usize) -> Self {
         Self { x, y }
     }
@@ -38,14 +38,14 @@ impl<const X: usize, const Y: usize> Iterator for GridIterator2D<X, Y> {
     }
 }
 
-/// Types implementing [SquareGridIterator] support a method [SquareGridIterator::iter_grid].
+/// Types implementing [`SquareGridIterator`] support a method [`SquareGridIterator::iter_grid`].
 pub trait SquareGridIterator<const T: usize> {
-    /// Returns a [GridIterator2D] that will visit each coordinate in the grid.
+    /// Returns a [`GridIterator2D`] that will visit each coordinate in the grid.
     /// The order of iteration is x-axis first, then y-axis.
     fn iter_grid(&self) -> GridIterator2D<T, T>;
 }
 
-/// Types implementing [GridAccessor2D] can be indexed by [Index2D] `coords`.
+/// Types implementing [`GridAccessor2D`] can be indexed by [`Index2D`] `coords`.
 pub trait GridAccessor2D<U> {
     /// Get the value at `coords`.
     fn get(&self, coords: Index2D) -> U;

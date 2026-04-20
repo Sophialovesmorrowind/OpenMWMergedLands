@@ -26,7 +26,7 @@ fn merge_cell_into(lhs: &mut ModifiedCell, rhs: &Cell, plugin: &Arc<ParsedPlugin
     }
 
     if !rhs.id.is_empty() && new.id != rhs.id {
-        new.id = rhs.id.clone();
+        new.id.clone_from(&rhs.id);
         is_modified = true;
     }
 
@@ -65,10 +65,7 @@ fn merge_cells_into(cells: &mut HashMap<Vec2<i32>, ModifiedCell>, plugins: &[Arc
 
         for cell in plugin.records.objects_of_type::<Cell>() {
             let coords = Vec2::new(cell.data.grid.0, cell.data.grid.1);
-            if cells.contains_key(&coords) {
-                let prev_cell = cells.get_mut(&coords).expect("safe");
-                merge_cell_into(prev_cell, cell, plugin);
-            } else {
+            if let std::collections::hash_map::Entry::Vacant(e) = cells.entry(coords) {
                 let new_cell = ModifiedCell {
                     inner: Cell {
                         flags: cell.flags,
@@ -78,19 +75,22 @@ fn merge_cells_into(cells: &mut HashMap<Vec2<i32>, ModifiedCell>, plugins: &[Arc
                         map_color: cell.map_color,
                         water_height: cell.water_height,
                         atmosphere_data: cell.atmosphere_data.clone(),
-                        references: Default::default(),
+                        references: cell.references.clone(),
                     },
                     plugins: vec![plugin.clone()],
                 };
 
-                cells.insert(coords, new_cell);
-            };
+                e.insert(new_cell);
+            } else {
+                let prev_cell = cells.get_mut(&coords).expect("safe");
+                merge_cell_into(prev_cell, cell, plugin);
+            }
         }
     }
 }
 
 pub fn merge_cells(parsed_plugins: &ParsedPlugins) -> HashMap<Vec2<i32>, ModifiedCell> {
-    let mut cells = Default::default();
+    let mut cells = HashMap::default();
 
     merge_cells_into(&mut cells, &parsed_plugins.masters);
     merge_cells_into(&mut cells, &parsed_plugins.plugins);
@@ -108,7 +108,7 @@ mod tests {
     use tes3::esp::{Cell, Plugin, TES3Object};
 
     fn cell_at(x: i32, y: i32, id: &str) -> Cell {
-        let mut cell: Cell = Default::default();
+        let mut cell = Cell::default();
         cell.data.grid = (x, y);
         cell.id = id.to_string();
         cell

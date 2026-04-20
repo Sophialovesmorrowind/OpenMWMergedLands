@@ -7,7 +7,7 @@ use crate::merge::relative_to::RelativeTo;
 use crate::ParsedPlugin;
 
 #[derive(Default)]
-/// Implements [MergeStrategy] to resolve any conflicts by merging changes together.
+/// Implements [`MergeStrategy`] to resolve any conflicts by merging changes together.
 pub struct ResolveConflictStrategy {}
 
 impl MergeStrategy for ResolveConflictStrategy {
@@ -24,13 +24,13 @@ impl MergeStrategy for ResolveConflictStrategy {
     {
         let mut new = lhs.clone();
 
-        let params = Default::default();
+        let params = crate::merge::conflict::ConflictParams::default();
 
         for coords in new.iter_grid() {
             let lhs_diff = lhs.has_difference(coords);
             let rhs_diff = rhs.has_difference(coords);
 
-            let mut diff = Default::default();
+            let mut diff = <U as RelativeTo>::Delta::default();
             if lhs_diff && !rhs_diff {
                 diff = lhs.get_difference(coords);
             } else if !lhs_diff && rhs_diff {
@@ -45,10 +45,7 @@ impl MergeStrategy for ResolveConflictStrategy {
                     None => {
                         diff = lhs.get_difference(coords);
                     }
-                    Some(ConflictType::Minor(value)) => {
-                        diff = value;
-                    }
-                    Some(ConflictType::Major(value)) => {
+                    Some(ConflictType::Minor(value) | ConflictType::Major(value)) => {
                         diff = value;
                     }
                 }

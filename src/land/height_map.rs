@@ -3,57 +3,78 @@ use crate::land::grid_access::{GridAccessor2D, Index2D, SquareGridIterator};
 use crate::land::terrain_map::{TerrainMap, Vec3};
 use crate::term_style::yellow;
 use log::warn;
+use num_traits::ToPrimitive;
 use tes3::esp::{Landscape, LandscapeFlags, VertexHeights};
 
 const CELL_SIZE: usize = 65;
 const HEIGHT_MAP_SCALE_FACTOR: i32 = 8;
-const HEIGHT_MAP_SCALE_FACTOR_F32: f32 = HEIGHT_MAP_SCALE_FACTOR as f32;
+const HEIGHT_MAP_SCALE_FACTOR_F32: f32 = 8.0;
 
 /// Limits `gradient` to the range of a [i8].
 fn truncate_gradient(gradient: &mut i32) {
-    if *gradient > i8::MAX as i32 {
-        *gradient = i8::MAX as i32;
-    } else if *gradient < i8::MIN as i32 {
-        *gradient = i8::MIN as i32;
+    if *gradient > i32::from(i8::MAX) {
+        *gradient = i32::from(i8::MAX);
+    } else if *gradient < i32::from(i8::MIN) {
+        *gradient = i32::from(i8::MIN);
     }
 }
 
-/// Calculates the vertex heights for the [TerrainMap] as a [TerrainMap] representing
+fn i32_to_i8_saturating(value: i32) -> i8 {
+    i8::try_from(value).unwrap_or_else(|_| {
+        if value < i32::from(i8::MIN) {
+            i8::MIN
+        } else {
+            i8::MAX
+        }
+    })
+}
+
+fn f32_to_i8_saturating(value: f32) -> i8 {
+    value
+        .clamp(f32::from(i8::MIN), f32::from(i8::MAX))
+        .to_i8()
+        .expect("bounded f32 should convert to i8")
+}
+
+/// Calculates the vertex heights for the [`TerrainMap`] as a [`TerrainMap`] representing
 /// a set of x-y differences and an [f32] for an offset. This is the tuple form of
-/// the [VertexHeights] for any array size `T`.
+/// the [`VertexHeights`] for any array size `T`.
 fn calculate_vertex_heights<const T: usize>(
     height_map: &TerrainMap<i32, T>,
 ) -> (f32, TerrainMap<i8, T>) {
     let mut terrain32 = [[0i32; T]; T];
-    let mut terrain = [[Default::default(); T]; T];
+    let mut terrain = [[i8::default(); T]; T];
 
-    let get_pixel = |y: usize, x: usize| (height_map[y][x] / HEIGHT_MAP_SCALE_FACTOR) as i32;
-    let offset = get_pixel(0, 0) as f32;
+    let get_pixel = |y: usize, x: usize| height_map[y][x] / HEIGHT_MAP_SCALE_FACTOR;
+    let offset_i32 = get_pixel(0, 0);
+    let offset = offset_i32
+        .to_f32()
+        .expect("height offset should convert to f32");
 
-    let get_pixel_with_offset = |y, x| get_pixel(y, x) - offset as i32;
+    let get_pixel_with_offset = |y, x| get_pixel(y, x) - offset_i32;
 
     // Compute the first column.
-    for y in 1..T {
-        terrain32[y][0] = get_pixel_with_offset(y, 0) - get_pixel_with_offset(y - 1, 0);
-        truncate_gradient(&mut terrain32[y][0]);
+    for (y, row) in terrain32.iter_mut().enumerate().skip(1) {
+        row[0] = get_pixel_with_offset(y, 0) - get_pixel_with_offset(y - 1, 0);
+        truncate_gradient(&mut row[0]);
     }
 
     // Compute each row.
-    for y in 0..T {
-        for x in 1..T {
-            terrain32[y][x] = get_pixel_with_offset(y, x) - get_pixel_with_offset(y, x - 1);
-            truncate_gradient(&mut terrain32[y][x]);
+    for (y, row) in terrain32.iter_mut().enumerate() {
+        for (x, cell) in row.iter_mut().enumerate().skip(1) {
+            *cell = get_pixel_with_offset(y, x) - get_pixel_with_offset(y, x - 1);
+            truncate_gradient(cell);
         }
     }
 
     for coords in terrain32.iter_grid() {
-        *terrain.get_mut(coords) = terrain32.get(coords) as i8;
+        *terrain.get_mut(coords) = i32_to_i8_saturating(terrain32.get(coords));
     }
 
     (offset, terrain)
 }
 
-/// Creates [VertexHeights] from the `height_map` [TerrainMap].
+/// Creates [`VertexHeights`] from the `height_map` [`TerrainMap`].
 pub fn calculate_vertex_heights_tes3(height_map: &TerrainMap<i32, CELL_SIZE>) -> VertexHeights {
     let (offset, terrain) = calculate_vertex_heights(height_map);
     VertexHeights {
@@ -62,15 +83,18 @@ pub fn calculate_vertex_heights_tes3(height_map: &TerrainMap<i32, CELL_SIZE>) ->
     }
 }
 
-/// Creates [TerrainMap] from the `vertex_heights` [VertexHeights].
+/// Creates [`TerrainMap`] from the `vertex_heights` [`VertexHeights`].
 fn calculate_height_map<const T: usize>(vertex_heights: &VertexHeights) -> TerrainMap<i32, T> {
     let mut grid_height = [[0; T]; T];
-    let mut height = vertex_heights.offset as i32;
+    let mut height = vertex_heights
+        .offset
+        .to_i32()
+        .expect("vertex height offset should convert to i32");
 
     for y in 0..T {
         for x in 0..T {
             let coords = Index2D::new(x, y);
-            height += vertex_heights.data.get(coords) as i32;
+            height += i32::from(vertex_heights.data.get(coords));
             *grid_height.get_mut(coords) = height;
         }
 
@@ -84,7 +108,7 @@ fn calculate_height_map<const T: usize>(vertex_heights: &VertexHeights) -> Terra
     grid_height
 }
 
-/// Calculates the vertex normals for the [TerrainMap].
+/// Calculates the vertex normals for the [`TerrainMap`].
 pub fn calculate_vertex_normals_map<const T: usize>(
     height_map: &TerrainMap<i32, T>,
 ) -> TerrainMap<Vec3<i8>, T> {
@@ -105,27 +129,39 @@ pub fn calculate_vertex_normals_map<const T: usize>(
         Index2D::new(x, y)
     }
 
-    let mut terrain = [[Default::default(); T]; T];
+    let mut terrain = [[Vec3::default(); T]; T];
 
     for coords in height_map.iter_grid() {
         let fixed_coords = fix_coords::<T>(coords);
 
-        let coords_x1 = Index2D::new(fixed_coords.x + 1, fixed_coords.y);
+        let coords_right = Index2D::new(fixed_coords.x + 1, fixed_coords.y);
 
-        let h = height_map.get(fixed_coords) as f32 / HEIGHT_MAP_SCALE_FACTOR_F32;
-        let x1 = height_map.get(coords_x1) as f32 / HEIGHT_MAP_SCALE_FACTOR_F32;
+        let h = height_map
+            .get(fixed_coords)
+            .to_f32()
+            .expect("height value should convert to f32")
+            / HEIGHT_MAP_SCALE_FACTOR_F32;
+        let x1 = height_map
+            .get(coords_right)
+            .to_f32()
+            .expect("height value should convert to f32")
+            / HEIGHT_MAP_SCALE_FACTOR_F32;
         let v1 = Vec3 {
             x: 128f32 / HEIGHT_MAP_SCALE_FACTOR_F32,
             y: 0f32,
-            z: (x1 - h) as f32,
+            z: x1 - h,
         };
 
-        let coords_y1 = Index2D::new(fixed_coords.x, fixed_coords.y + 1);
-        let y1 = height_map.get(coords_y1) as f32 / HEIGHT_MAP_SCALE_FACTOR_F32;
+        let coords_up = Index2D::new(fixed_coords.x, fixed_coords.y + 1);
+        let y1 = height_map
+            .get(coords_up)
+            .to_f32()
+            .expect("height value should convert to f32")
+            / HEIGHT_MAP_SCALE_FACTOR_F32;
         let v2 = Vec3 {
             x: 0f32,
             y: 128f32 / HEIGHT_MAP_SCALE_FACTOR_F32,
-            z: (y1 - h) as f32,
+            z: y1 - h,
         };
 
         let mut normal = Vec3 {
@@ -141,14 +177,18 @@ pub fn calculate_vertex_normals_map<const T: usize>(
         normal.y /= hyp;
         normal.z /= hyp;
 
-        *terrain.get_mut(coords) = Vec3::new(normal.x as i8, normal.y as i8, normal.z as i8);
+        *terrain.get_mut(coords) = Vec3::new(
+            f32_to_i8_saturating(normal.x),
+            f32_to_i8_saturating(normal.y),
+            f32_to_i8_saturating(normal.z),
+        );
     }
 
     terrain
 }
 
-/// Calculate a [TerrainMap] of the [Landscape]'s height map by converting the
-/// [VertexHeights] if present.
+/// Calculate a [`TerrainMap`] of the [Landscape]'s height map by converting the
+/// [`VertexHeights`] if present.
 pub fn try_calculate_height_map(land: &Landscape) -> Option<TerrainMap<i32, 65>> {
     let included_data = landscape_flags(land);
     if !included_data.contains(LandscapeFlags::USES_VERTEX_HEIGHTS_AND_NORMALS) {
@@ -206,41 +246,51 @@ mod tests {
 
     #[test]
     fn vertex_heights_roundtrip_restores_original_height_map() {
-        let mut map = [[0i32; 65]; 65];
+        let mut map: Box<[[i32; 65]; 65]> = vec![[0i32; 65]; 65]
+            .into_boxed_slice()
+            .try_into()
+            .expect("valid 65x65 map");
         for (y, row) in map.iter_mut().enumerate() {
             for (x, cell) in row.iter_mut().enumerate() {
-                *cell = ((x + y) as i32) * 8;
+                *cell = i32::try_from(x + y).expect("safe") * 8;
             }
         }
 
         let vertex_heights = calculate_vertex_heights_tes3(&map);
         let restored = calculate_height_map::<65>(&vertex_heights);
-        assert_eq!(restored, map);
+        assert_eq!(restored, *map);
     }
 
     #[test]
     fn calculate_vertex_heights_returns_expected_offset_for_uniform_map() {
         let map = [[80i32; 4]; 4];
         let (offset, terrain) = calculate_vertex_heights(&map);
-        assert_eq!(offset, 10.0);
+        assert!((offset - 10.0).abs() < f32::EPSILON);
         assert!(terrain.into_iter().flatten().all(|value| value == 0));
     }
 
     #[test]
     fn try_calculate_height_map_requires_vertex_height_flag() {
-        let mut land = Landscape::default();
-        land.landscape_flags = LandscapeFlags::USES_VERTEX_COLORS;
+        let land = Landscape {
+            landscape_flags: LandscapeFlags::USES_VERTEX_COLORS,
+            ..Landscape::default()
+        };
         assert!(try_calculate_height_map(&land).is_none());
     }
 
     #[test]
     fn try_calculate_height_map_reads_vertex_heights_when_flagged() {
-        let map = [[16i32; 65]; 65];
-        let mut land = Landscape::default();
-        land.landscape_flags = LandscapeFlags::USES_VERTEX_HEIGHTS_AND_NORMALS;
-        land.vertex_heights = Some(calculate_vertex_heights_tes3(&map));
+        let map: Box<[[i32; 65]; 65]> = vec![[16i32; 65]; 65]
+            .into_boxed_slice()
+            .try_into()
+            .expect("valid 65x65 map");
+        let land = Landscape {
+            landscape_flags: LandscapeFlags::USES_VERTEX_HEIGHTS_AND_NORMALS,
+            vertex_heights: Some(calculate_vertex_heights_tes3(&map)),
+            ..Landscape::default()
+        };
 
         let parsed = try_calculate_height_map(&land).expect("height map should be present");
-        assert_eq!(parsed, map);
+        assert_eq!(parsed, *map);
     }
 }

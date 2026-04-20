@@ -28,7 +28,7 @@ fn push_back_neighbors(
             Ordering::Equal => match lhs.y.cmp(&rhs.y) {
                 Ordering::Greater => (rhs, lhs),
                 Ordering::Less => (lhs, rhs),
-                _ => unreachable!(),
+                Ordering::Equal => unreachable!(),
             },
         }
     }
@@ -144,7 +144,7 @@ fn repair_corner_seams(
         },
     ];
 
-    for case in cases.iter() {
+    for case in &cases {
         let average = {
             let adjacent_values = case.corners.iter().map(|corner| {
                 merged
@@ -173,7 +173,7 @@ fn repair_corner_seams(
             continue;
         };
 
-        for corner in case.corners.iter() {
+        for corner in &case.corners {
             let Some(land) = merged
                 .land
                 .get_mut(&coords_with_offset(coords, corner.cell_offset))
@@ -193,11 +193,39 @@ fn repair_corner_seams(
     }
 }
 
+/// Repairs a seam shared by two cells along a side.
+fn try_repair_seam<const T: usize>(
+    lhs_coord: Index2D,
+    rhs_coord: Index2D,
+    lhs_map: &mut RelativeTerrainMap<i32, T>,
+    rhs_map: &mut RelativeTerrainMap<i32, T>,
+    index: usize,
+) -> usize {
+    let lhs_value = lhs_map.get_value(lhs_coord);
+    let rhs_value = rhs_map.get_value(rhs_coord);
+    if lhs_value == rhs_value {
+        0
+    } else {
+        assert!(
+            index != 0 && index != 64,
+            "corners should have been fixed first"
+        );
+
+        // TODO(dvd): #feature Should this use the ConflictResolver instead?
+        let average = i32::midpoint(lhs_value, rhs_value);
+        let lhs_diff = (average - lhs_value).abs();
+        let rhs_diff = (average - rhs_value).abs();
+        lhs_map.set_value(lhs_coord, average);
+        rhs_map.set_value(rhs_coord, average);
+        usize::try_from(lhs_diff.max(rhs_diff)).expect("difference should not be negative")
+    }
+}
+
 /// Repairs landmass seams by a two-step algorithm. First, the algorithm repairs any
 /// corner seams by averaging the values of all vertices shared by 4 cells. Then, the
 /// algorithm will repair seams on the sides between cells by picking the average value
 /// of both sides. For performance, only seams adjacent to coordinates in the `possible_seams`
-/// field of the [LandmassDiff] will be visited.
+/// field of the [`LandmassDiff`] will be visited.
 pub fn repair_landmass_seams(merged: &mut LandmassDiff) -> usize {
     let mut possible_seams = VecDeque::new();
     let mut visited = HashSet::new();
@@ -209,34 +237,6 @@ pub fn repair_landmass_seams(merged: &mut LandmassDiff) -> usize {
     for coords in coords_to_visit {
         repair_corner_seams(merged, coords, &mut num_seams_repaired);
         push_back_neighbors(&mut possible_seams, &mut visited, coords);
-    }
-
-    /// Repairs a seam shared by two cells along a side.
-    fn try_repair_seam<const T: usize>(
-        lhs_coord: Index2D,
-        rhs_coord: Index2D,
-        lhs_map: &mut RelativeTerrainMap<i32, T>,
-        rhs_map: &mut RelativeTerrainMap<i32, T>,
-        index: usize,
-    ) -> usize {
-        let lhs_value = lhs_map.get_value(lhs_coord);
-        let rhs_value = rhs_map.get_value(rhs_coord);
-        if lhs_value != rhs_value {
-            assert!(
-                index != 0 && index != 64,
-                "corners should have been fixed first"
-            );
-
-            // TODO(dvd): #feature Should this use the ConflictResolver instead?
-            let average = (lhs_value + rhs_value) / 2;
-            let lhs_diff = (average - lhs_value).abs();
-            let rhs_diff = (average - rhs_value).abs();
-            lhs_map.set_value(lhs_coord, average);
-            rhs_map.set_value(rhs_coord, average);
-            lhs_diff.max(rhs_diff) as usize
-        } else {
-            0
-        }
     }
 
     while !possible_seams.is_empty() {
@@ -312,7 +312,7 @@ pub fn repair_landmass_seams(merged: &mut LandmassDiff) -> usize {
     }
 
     if num_seams_repaired > 0 {
-        debug!("Repaired {} seams", num_seams_repaired);
+        debug!("Repaired {num_seams_repaired} seams");
         let mut repaired: Vec<_> = repaired.iter().collect();
         repaired.sort_by_key(|a| std::cmp::Reverse(a.1));
         for seam in repaired {
@@ -374,10 +374,14 @@ mod tests {
     }
 
     fn landscape(coords: Vec2<i32>) -> LandscapeDiff {
+        let height_map: Box<[[i32; 65]; 65]> = vec![[0i32; 65]; 65]
+            .into_boxed_slice()
+            .try_into()
+            .expect("valid 65x65 height map");
         LandscapeDiff {
             coords,
             flags: ObjectFlags::default(),
-            height_map: Some(RelativeTerrainMap::empty([[0i32; 65]; 65])),
+            height_map: Some(RelativeTerrainMap::empty(*height_map)),
             vertex_normals: None,
             world_map_data: None,
             vertex_colors: None,

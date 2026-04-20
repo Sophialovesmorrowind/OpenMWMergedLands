@@ -1,62 +1,62 @@
 use crate::land::terrain_map::Vec3;
 use crate::merge::round_to::RoundTo;
+use num_traits::ToPrimitive;
 
-/// The [ConflictType] classifies the severity of a conflict.
-/// This is determined by [ConflictParams] passed to the
-/// [ConflictResolver::average] method.
+/// The [`ConflictType`] classifies the severity of a conflict.
+/// This is determined by [`ConflictParams`] passed to the
+/// [`ConflictResolver::average`] method.
 pub enum ConflictType<T> {
-    /// A minor [ConflictType].
+    /// A minor [`ConflictType`].
     Minor(T),
-    /// A major [ConflictType].
+    /// A major [`ConflictType`].
     Major(T),
 }
 
-/// A [Conflict] is an [Option] wrapper around [ConflictType].
+/// A [Conflict] is an [Option] wrapper around [`ConflictType`].
 pub type Conflict<T> = Option<ConflictType<T>>;
 
-/// Types implementing [ConflictResolver] support the method [ConflictResolver::average].
+/// Types implementing [`ConflictResolver`] support the method [`ConflictResolver::average`].
 pub trait ConflictResolver: Sized {
-    /// Attempt to merge `self` with `rhs` per [ConflictParams] and return the [Conflict].
+    /// Attempt to merge `self` with `rhs` per [`ConflictParams`] and return the [Conflict].
     /// [None] is returned when `self == rhs`.
     fn average(self, rhs: Self, params: &ConflictParams) -> Conflict<Self>;
 }
 
-/// Controls the classification of a [Conflict] into [ConflictType::Minor] or [ConflictType::Major].
+/// Controls the classification of a [Conflict] into [`ConflictType::Minor`] or [`ConflictType::Major`].
 pub struct ConflictParams {
-    minor_threshold_pct: f32,
-    minor_threshold_min: f32,
-    minor_threshold_max: f32,
+    pct: f32,
+    min: f32,
+    max: f32,
 }
 
 impl Default for ConflictParams {
-    /// The default [ConflictParams] are chosen to minimize
-    /// the likelihood that a [ConflictType::Minor] is noticeable.
+    /// The default [`ConflictParams`] are chosen to minimize
+    /// the likelihood that a [`ConflictType::Minor`] is noticeable.
     fn default() -> Self {
         Self {
-            minor_threshold_pct: 0.3,
-            minor_threshold_min: 10.0,
-            minor_threshold_max: 64.0,
+            pct: 0.3,
+            min: 10.0,
+            max: 64.0,
         }
     }
 }
 
-/// Returns [ConflictType] for `lhs` and `rhs` per [ConflictParams].
+/// Returns [`ConflictType`] for `lhs` and `rhs` per [`ConflictParams`].
 fn classify_conflict<U>(lhs: f32, rhs: f32, params: &ConflictParams) -> ConflictType<U>
 where
     f32: RoundTo<U>,
 {
-    let lhs_weight = (lhs.abs() as f32) / ((lhs.abs() as f32) + (rhs.abs() as f32));
+    let lhs_weight = lhs.abs() / (lhs.abs() + rhs.abs());
     let rhs_weight = 1. - lhs_weight;
     let lhs_weight_2 = lhs_weight.powf(1.5);
     let rhs_weight_2 = rhs_weight.powf(1.5);
     let lhs_weight = lhs_weight_2 / (lhs_weight_2 + rhs_weight_2);
     let rhs_weight = 1. - lhs_weight;
-    let average = lhs_weight * (lhs as f32) + rhs_weight * (rhs as f32);
-    let minimum = lhs.min(rhs) as f32;
-    let proportional_threshold =
-        (params.minor_threshold_pct * minimum as f32).max(params.minor_threshold_min);
+    let average = lhs_weight * lhs + rhs_weight * rhs;
+    let minimum = lhs.min(rhs);
+    let proportional_threshold = (params.pct * minimum).max(params.min);
     let difference = f32::abs(minimum - average);
-    if difference >= proportional_threshold.min(params.minor_threshold_max) {
+    if difference >= proportional_threshold.min(params.max) {
         ConflictType::Major(average.round_to())
     } else {
         ConflictType::Minor(average.round_to())
@@ -71,11 +71,15 @@ where
         if self == rhs {
             None
         } else {
-            Some(classify_conflict(
-                self.into() as f32,
-                rhs.into() as f32,
-                params,
-            ))
+            let lhs = self
+                .into()
+                .to_f32()
+                .expect("lhs value cannot be represented as f32");
+            let rhs = rhs
+                .into()
+                .to_f32()
+                .expect("rhs value cannot be represented as f32");
+            Some(classify_conflict(lhs, rhs, params))
         }
     }
 }
