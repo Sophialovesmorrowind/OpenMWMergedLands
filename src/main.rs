@@ -830,24 +830,24 @@ fn merge_tes3_landscape(lhs: &Landscape, rhs: &Landscape) -> Landscape {
         }
     }
 
-    if new_data.contains(LandscapeFlags::USES_VERTEX_COLORS) {
-        if let Some(vertex_colors) = rhs.vertex_colors.as_ref() {
-            old_data |= LandscapeFlags::USES_VERTEX_COLORS;
-            land.vertex_colors = Some(vertex_colors.clone());
-        }
+    if new_data.contains(LandscapeFlags::USES_VERTEX_COLORS)
+        && let Some(vertex_colors) = rhs.vertex_colors.as_ref()
+    {
+        old_data |= LandscapeFlags::USES_VERTEX_COLORS;
+        land.vertex_colors = Some(vertex_colors.clone());
     }
 
-    if new_data.contains(LandscapeFlags::USES_TEXTURES) {
-        if let Some(texture_indices) = rhs.texture_indices.as_ref() {
-            old_data |= LandscapeFlags::USES_TEXTURES;
-            land.texture_indices = Some(texture_indices.clone());
-        }
+    if new_data.contains(LandscapeFlags::USES_TEXTURES)
+        && let Some(texture_indices) = rhs.texture_indices.as_ref()
+    {
+        old_data |= LandscapeFlags::USES_TEXTURES;
+        land.texture_indices = Some(texture_indices.clone());
     }
 
-    if new_data.uses_world_map_data() {
-        if let Some(world_map_data) = rhs.world_map_data.as_ref() {
-            land.world_map_data = Some(world_map_data.clone());
-        }
+    if new_data.uses_world_map_data()
+        && let Some(world_map_data) = rhs.world_map_data.as_ref()
+    {
+        land.world_map_data = Some(world_map_data.clone());
     }
 
     land.landscape_flags = old_data;
