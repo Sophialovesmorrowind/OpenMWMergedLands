@@ -379,6 +379,17 @@ mod tests {
         (cells, lands, ltex)
     }
 
+    fn header_masters(plugin: &Plugin) -> Vec<(String, u64)> {
+        plugin
+            .objects
+            .iter()
+            .find_map(|object| match object {
+                TES3Object::Header(header) => header.masters.clone(),
+                _ => None,
+            })
+            .unwrap_or_default()
+    }
+
     fn landscape_diff_with_texture(
         plugin: Arc<ParsedPlugin>,
         coords: Vec2<i32>,
@@ -518,6 +529,11 @@ mod tests {
         assert_eq!(land_count, 1);
         assert_eq!(ltex_count, 0);
 
+        let masters = header_masters(&output);
+        assert_eq!(masters.len(), 1);
+        assert_eq!(masters[0].0, source_name);
+        assert_eq!(masters[0].1, 3);
+
         let out_land = output
             .objects
             .iter()
@@ -595,6 +611,13 @@ mod tests {
         assert_eq!(with_counts.0, 1);
         assert_eq!(no_counts.0, 0);
 
+        let with_masters = header_masters(&with_cells);
+        let no_masters = header_masters(&no_cells);
+        assert_eq!(with_masters, no_masters);
+        assert_eq!(with_masters.len(), 1);
+        assert_eq!(with_masters[0].0, source_name);
+        assert_eq!(with_masters[0].1, 3);
+
         fs::remove_dir_all(root).expect("cleanup temp dir");
     }
 
@@ -642,6 +665,7 @@ mod tests {
         let a = load_plugin(&output_dir.join("DetA.esp"));
         let b = load_plugin(&output_dir.join("DetB.esp"));
         assert_eq!(object_counts(&a), object_counts(&b));
+        assert_eq!(header_masters(&a), header_masters(&b));
 
         let a_land = a
             .objects
