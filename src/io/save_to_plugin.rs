@@ -298,23 +298,85 @@ pub fn save_plugin(
 #[cfg(test)]
 mod tests {
     use super::{
-        convert_landmass_diff_to_landmass, convert_landscape_diff_to_landscape, to_master_record,
+        convert_landmass_diff_to_landmass, convert_landscape_diff_to_landscape, save_plugin,
+        to_master_record,
     };
+    use crate::cli::SortOrder;
     use crate::io::parsed_plugins::{DataDirs, ParsedPlugin};
     use crate::land::grid_access::Index2D;
+    use crate::land::height_map::{calculate_vertex_heights_tes3, try_calculate_height_map};
     use crate::land::landscape_diff::LandscapeDiff;
-    use crate::land::terrain_map::LandData;
-    use crate::land::textures::{IndexVTEX, RemappedTextures};
+    use crate::land::terrain_map::{LandData, Vec2};
+    use crate::land::textures::{IndexVTEX, KnownTextures, RemappedTextures};
+    use crate::merge::cells::ModifiedCell;
     use crate::merge::relative_terrain_map::RelativeTerrainMap;
-    use crate::{LandmassDiff, Vec2};
+    use crate::{Landmass, LandmassDiff};
     use std::collections::HashMap;
     use std::fs;
+    use std::path::PathBuf;
     use std::sync::Arc;
     use std::time::{SystemTime, UNIX_EPOCH};
-    use tes3::esp::{LandscapeFlags, ObjectFlags};
+    use tes3::esp::{Cell, Landscape, LandscapeFlags, ObjectFlags, Plugin, TES3Object};
 
     fn plugin(name: &str) -> Arc<ParsedPlugin> {
         Arc::new(ParsedPlugin::empty(name))
+    }
+
+    fn unique_temp_dir(name: &str) -> PathBuf {
+        let unique = format!(
+            "{}_{}_{}",
+            name,
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("clock before unix epoch")
+                .as_nanos()
+        );
+        let dir = std::env::temp_dir().join(unique);
+        fs::create_dir_all(&dir).expect("create temp dir");
+        dir
+    }
+
+    fn fixture_land(coords: (i32, i32), base_height: i32) -> Landscape {
+        let mut land = Landscape::default();
+        land.flags = ObjectFlags::default();
+        land.grid = coords;
+        land.landscape_flags =
+            LandscapeFlags::USES_VERTEX_HEIGHTS_AND_NORMALS | LandscapeFlags::UNKNOWN;
+
+        let mut heights = [[base_height; 65]; 65];
+        heights[1][1] = base_height + 16;
+        land.vertex_heights = Some(calculate_vertex_heights_tes3(&heights));
+        land.vertex_normals = Some(Default::default());
+        land
+    }
+
+    fn fixture_cell(coords: (i32, i32), id: &str) -> Cell {
+        let mut cell = Cell::default();
+        cell.data.grid = coords;
+        cell.id = id.to_string();
+        cell
+    }
+
+    fn load_plugin(path: &std::path::Path) -> Plugin {
+        let mut plugin = Plugin::new();
+        plugin.load_path(path).expect("load plugin");
+        plugin
+    }
+
+    fn object_counts(plugin: &Plugin) -> (usize, usize, usize) {
+        let mut cells = 0;
+        let mut lands = 0;
+        let mut ltex = 0;
+        for object in &plugin.objects {
+            match object {
+                TES3Object::Cell(_) => cells += 1,
+                TES3Object::Landscape(_) => lands += 1,
+                TES3Object::LandscapeTexture(_) => ltex += 1,
+                _ => {}
+            }
+        }
+        (cells, lands, ltex)
     }
 
     fn landscape_diff_with_texture(
@@ -410,5 +472,199 @@ mod tests {
 
         assert!(converted.land.contains_key(&coords));
         assert!(converted.plugins.contains_key(&coords));
+    }
+
+    #[test]
+    fn save_plugin_writes_non_empty_land_and_cell_content() {
+        let root = unique_temp_dir("save_plugin_non_empty");
+        let data_dir = root.join("Data Files");
+        let output_dir = root.join("Output");
+        fs::create_dir_all(&data_dir).expect("create data dir");
+        fs::create_dir_all(&output_dir).expect("create output dir");
+
+        let source_name = "Source.esp";
+        fs::write(data_dir.join(source_name), [1u8, 2, 3]).expect("write source plugin file");
+
+        let source_plugin = plugin(source_name);
+        let coords = Vec2::new(7, 9);
+
+        let mut landmass = Landmass::new(source_plugin.clone());
+        let land = fixture_land((coords.x, coords.y), 120);
+        landmass.insert_land(coords, &source_plugin, &land);
+
+        let mut cells = HashMap::new();
+        cells.insert(
+            coords,
+            ModifiedCell {
+                inner: fixture_cell((coords.x, coords.y), "Output Cell"),
+                plugins: vec![source_plugin.clone()],
+            },
+        );
+
+        save_plugin(
+            &DataDirs::single(data_dir.clone()),
+            &output_dir,
+            "MergedOut.esp",
+            SortOrder::None,
+            &landmass,
+            &KnownTextures::new(),
+            Some(&cells),
+        )
+        .expect("save should succeed");
+
+        let output = load_plugin(&output_dir.join("MergedOut.esp"));
+        let (cell_count, land_count, ltex_count) = object_counts(&output);
+        assert_eq!(cell_count, 1);
+        assert_eq!(land_count, 1);
+        assert_eq!(ltex_count, 0);
+
+        let out_land = output
+            .objects
+            .iter()
+            .find_map(|object| match object {
+                TES3Object::Landscape(land) => Some(land),
+                _ => None,
+            })
+            .expect("LAND should exist");
+        assert_eq!(out_land.grid, (7, 9));
+        assert!(out_land.vertex_heights.is_some());
+        assert!(out_land.vertex_normals.is_some());
+        assert!(try_calculate_height_map(out_land).is_some());
+
+        fs::remove_dir_all(root).expect("cleanup temp dir");
+    }
+
+    #[test]
+    fn save_plugin_remove_cells_mode_keeps_same_land_count() {
+        let root = unique_temp_dir("save_plugin_remove_cells");
+        let data_dir = root.join("Data Files");
+        let output_dir = root.join("Output");
+        fs::create_dir_all(&data_dir).expect("create data dir");
+        fs::create_dir_all(&output_dir).expect("create output dir");
+
+        let source_name = "Source.esp";
+        fs::write(data_dir.join(source_name), [4u8, 5, 6]).expect("write source plugin file");
+        let source_plugin = plugin(source_name);
+        let coords = Vec2::new(3, 5);
+
+        let mut landmass = Landmass::new(source_plugin.clone());
+        landmass.insert_land(
+            coords,
+            &source_plugin,
+            &fixture_land((coords.x, coords.y), 200),
+        );
+
+        let mut cells = HashMap::new();
+        cells.insert(
+            coords,
+            ModifiedCell {
+                inner: fixture_cell((coords.x, coords.y), "Output Cell"),
+                plugins: vec![source_plugin.clone()],
+            },
+        );
+
+        save_plugin(
+            &DataDirs::single(data_dir.clone()),
+            &output_dir,
+            "WithCells.esp",
+            SortOrder::None,
+            &landmass,
+            &KnownTextures::new(),
+            Some(&cells),
+        )
+        .expect("save with cells");
+
+        save_plugin(
+            &DataDirs::single(data_dir),
+            &output_dir,
+            "NoCells.esp",
+            SortOrder::None,
+            &landmass,
+            &KnownTextures::new(),
+            None,
+        )
+        .expect("save without cells");
+
+        let with_cells = load_plugin(&output_dir.join("WithCells.esp"));
+        let no_cells = load_plugin(&output_dir.join("NoCells.esp"));
+
+        let with_counts = object_counts(&with_cells);
+        let no_counts = object_counts(&no_cells);
+        assert_eq!(with_counts.1, 1);
+        assert_eq!(no_counts.1, 1);
+        assert_eq!(with_counts.0, 1);
+        assert_eq!(no_counts.0, 0);
+
+        fs::remove_dir_all(root).expect("cleanup temp dir");
+    }
+
+    #[test]
+    fn save_plugin_non_empty_output_is_deterministic() {
+        let root = unique_temp_dir("save_plugin_deterministic");
+        let data_dir = root.join("Data Files");
+        let output_dir = root.join("Output");
+        fs::create_dir_all(&data_dir).expect("create data dir");
+        fs::create_dir_all(&output_dir).expect("create output dir");
+
+        let source_name = "Source.esp";
+        fs::write(data_dir.join(source_name), [9u8, 8, 7]).expect("write source plugin file");
+        let source_plugin = plugin(source_name);
+
+        let mut landmass = Landmass::new(source_plugin.clone());
+        let coords = Vec2::new(12, 14);
+        landmass.insert_land(
+            coords,
+            &source_plugin,
+            &fixture_land((coords.x, coords.y), 88),
+        );
+
+        save_plugin(
+            &DataDirs::single(data_dir.clone()),
+            &output_dir,
+            "DetA.esp",
+            SortOrder::None,
+            &landmass,
+            &KnownTextures::new(),
+            None,
+        )
+        .expect("save det A");
+        save_plugin(
+            &DataDirs::single(data_dir),
+            &output_dir,
+            "DetB.esp",
+            SortOrder::None,
+            &landmass,
+            &KnownTextures::new(),
+            None,
+        )
+        .expect("save det B");
+
+        let a = load_plugin(&output_dir.join("DetA.esp"));
+        let b = load_plugin(&output_dir.join("DetB.esp"));
+        assert_eq!(object_counts(&a), object_counts(&b));
+
+        let a_land = a
+            .objects
+            .iter()
+            .find_map(|object| match object {
+                TES3Object::Landscape(land) => Some(land),
+                _ => None,
+            })
+            .expect("LAND in A");
+        let b_land = b
+            .objects
+            .iter()
+            .find_map(|object| match object {
+                TES3Object::Landscape(land) => Some(land),
+                _ => None,
+            })
+            .expect("LAND in B");
+
+        assert_eq!(a_land.grid, b_land.grid);
+        let a_heights = try_calculate_height_map(a_land).expect("heights A");
+        let b_heights = try_calculate_height_map(b_land).expect("heights B");
+        assert_eq!(a_heights[1][1], b_heights[1][1]);
+
+        fs::remove_dir_all(root).expect("cleanup temp dir");
     }
 }
