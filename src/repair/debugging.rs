@@ -76,3 +76,67 @@ pub fn add_debug_vertex_colors_to_landmass(reference: &mut LandmassDiff, plugin:
         add_debug_vertex_colors_to_landscape(merged_land, land);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::add_vertex_colors;
+    use crate::land::grid_access::Index2D;
+    use crate::land::terrain_map::Vec3;
+    use crate::merge::relative_terrain_map::RelativeTerrainMap;
+
+    #[test]
+    fn add_vertex_colors_marks_major_conflicts_red() {
+        let lhs = RelativeTerrainMap::<i32, 2>::empty([[0; 2]; 2]);
+        let mut rhs = RelativeTerrainMap::<i32, 2>::empty([[0; 2]; 2]);
+        rhs.set_value(Index2D::new(0, 0), 100);
+
+        let mut vertex_colors =
+            RelativeTerrainMap::<Vec3<u8>, 2>::empty([[Vec3::new(0, 0, 0); 2]; 2]);
+        add_vertex_colors(Some(&lhs), Some(&rhs), Some(&mut vertex_colors));
+
+        assert_eq!(
+            vertex_colors.get_value(Index2D::new(0, 0)),
+            Vec3::new(255, 0, 0)
+        );
+    }
+
+    #[test]
+    fn add_vertex_colors_skips_cells_without_rhs_difference() {
+        let lhs = RelativeTerrainMap::<i32, 2>::empty([[0; 2]; 2]);
+        let rhs = RelativeTerrainMap::<i32, 2>::empty([[0; 2]; 2]);
+
+        let mut vertex_colors =
+            RelativeTerrainMap::<Vec3<u8>, 2>::empty([[Vec3::new(0, 0, 0); 2]; 2]);
+        add_vertex_colors(Some(&lhs), Some(&rhs), Some(&mut vertex_colors));
+
+        assert_eq!(
+            vertex_colors.get_value(Index2D::new(0, 0)),
+            Vec3::new(0, 0, 0)
+        );
+        assert_eq!(
+            vertex_colors.get_value(Index2D::new(1, 1)),
+            Vec3::new(0, 0, 0)
+        );
+    }
+
+    #[test]
+    fn add_vertex_colors_does_not_downgrade_existing_major_to_minor() {
+        let lhs_major = RelativeTerrainMap::<i32, 2>::empty([[0; 2]; 2]);
+        let mut rhs_major = RelativeTerrainMap::<i32, 2>::empty([[0; 2]; 2]);
+        rhs_major.set_value(Index2D::new(1, 1), 100);
+
+        let mut vertex_colors =
+            RelativeTerrainMap::<Vec3<u8>, 2>::empty([[Vec3::new(0, 0, 0); 2]; 2]);
+        add_vertex_colors(Some(&lhs_major), Some(&rhs_major), Some(&mut vertex_colors));
+
+        let lhs_minor = RelativeTerrainMap::<i32, 2>::empty([[0; 2]; 2]);
+        let mut rhs_minor = RelativeTerrainMap::<i32, 2>::empty([[0; 2]; 2]);
+        rhs_minor.set_value(Index2D::new(1, 1), 2);
+        add_vertex_colors(Some(&lhs_minor), Some(&rhs_minor), Some(&mut vertex_colors));
+
+        assert_eq!(
+            vertex_colors.get_value(Index2D::new(1, 1)),
+            Vec3::new(255, 0, 0)
+        );
+    }
+}
