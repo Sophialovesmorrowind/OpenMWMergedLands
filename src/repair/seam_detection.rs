@@ -162,7 +162,10 @@ fn repair_corner_seams(
             }
 
             if num_values > 0 {
-                Some((average / num_values) as i32)
+                Some(
+                    i32::try_from(average / num_values)
+                        .expect("average of i32 values should fit in i32"),
+                )
             } else {
                 None
             }
