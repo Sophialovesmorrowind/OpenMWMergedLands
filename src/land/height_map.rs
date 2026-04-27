@@ -30,10 +30,14 @@ fn i32_to_i8_saturating(value: i32) -> i8 {
 }
 
 fn f32_to_i8_saturating(value: f32) -> i8 {
-    value
-        .clamp(f32::from(i8::MIN), f32::from(i8::MAX))
-        .to_i8()
-        .expect("bounded f32 should convert to i8")
+    if value.is_finite() {
+        value
+            .clamp(f32::from(i8::MIN), f32::from(i8::MAX))
+            .to_i8()
+            .expect("bounded f32 should convert to i8")
+    } else {
+        0
+    }
 }
 
 /// Calculates the vertex heights for the [`TerrainMap`] as a [`TerrainMap`] representing

@@ -15,7 +15,9 @@ impl RoundTo<i32> for f32 {
 
 impl RoundTo<i8> for f32 {
     fn round_to(self) -> i8 {
-        self.to_i8().expect("value cannot be represented as i8")
+        self.clamp(f32::from(i8::MIN), f32::from(i8::MAX))
+            .to_i8()
+            .expect("bounded f32 should convert to i8")
     }
 }
 
@@ -53,6 +55,15 @@ mod tests {
         assert_eq!(rounded_signed, -2);
         assert_eq!(rounded_byte, 255);
         assert_eq!(rounded_word, 512);
+    }
+
+    #[test]
+    fn round_to_i8_saturates_when_value_exceeds_bounds() {
+        let too_large: i8 = 200.0f32.round_to();
+        let too_small: i8 = (-200.0f32).round_to();
+
+        assert_eq!(too_large, i8::MAX);
+        assert_eq!(too_small, i8::MIN);
     }
 
     #[test]

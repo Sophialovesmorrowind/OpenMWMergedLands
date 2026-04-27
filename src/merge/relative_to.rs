@@ -48,7 +48,8 @@ impl RelativeTo for i8 {
     }
 
     fn add(lhs: Self, rhs: Self::Delta) -> Self {
-        Self::try_from(Self::Delta::from(lhs) + rhs).expect("i8 addition overflow")
+        Self::try_from((Self::Delta::from(lhs) + rhs).clamp(i32::from(i8::MIN), i32::from(i8::MAX)))
+            .expect("clamped value should convert to i8")
     }
 }
 
@@ -112,6 +113,12 @@ mod tests {
         let rhs = -10i8;
         let delta = i8::subtract(lhs, rhs);
         assert_eq!(i8::add(rhs, delta), lhs);
+    }
+
+    #[test]
+    fn i8_add_saturates_when_delta_exceeds_bounds() {
+        assert_eq!(i8::add(100, 100), i8::MAX);
+        assert_eq!(i8::add(-100, -100), i8::MIN);
     }
 
     #[test]

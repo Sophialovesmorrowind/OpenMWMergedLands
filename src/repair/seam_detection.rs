@@ -154,16 +154,15 @@ fn repair_corner_seams(
                     .map(|height_map| height_map.get_value(corner.coords))
             });
 
-            let mut average = 0;
-            let mut num_values = 0;
+            let mut average = 0i64;
+            let mut num_values = 0i64;
             for value in adjacent_values.flatten() {
-                average += value;
+                average += i64::from(value);
                 num_values += 1;
             }
 
             if num_values > 0 {
-                average /= num_values;
-                Some(average)
+                Some((average / num_values) as i32)
             } else {
                 None
             }
