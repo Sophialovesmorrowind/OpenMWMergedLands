@@ -6,12 +6,11 @@ use crate::land::height_map::calculate_vertex_heights_tes3;
 use crate::land::landscape_diff::LandscapeDiff;
 use crate::land::terrain_map::Vec3;
 use crate::land::textures::{IndexVTEX, KnownTextures, RemappedTextures};
-use crate::merge::cells::ModifiedCell;
 use crate::merge::relative_terrain_map::{DefaultRelativeTerrainMap, recompute_vertex_normals};
-use crate::{Landmass, LandmassDiff, Vec2};
+use crate::{Landmass, LandmassDiff};
 use anyhow::{Context, Result, anyhow};
 use log::{debug, trace, warn};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -150,7 +149,6 @@ pub fn save_plugin(
     sort_order: SortOrder,
     landmass: &Landmass,
     known_textures: &KnownTextures,
-    cells: Option<&HashMap<Vec2<i32>, ModifiedCell>>,
 ) -> Result<()> {
     ParsedPlugins::check_dir_exists(output_file_dir)
         .with_context(|| anyhow!("Unable to save file {output_name}"))?;
@@ -173,30 +171,6 @@ pub fn save_plugin(
         // Add plugins used for the land.
         for plugin in landmass.plugins.values() {
             add_dependency(plugin);
-        }
-
-        if let Some(cells) = cells {
-            // Add plugins that modified cells.
-            for (coords, _) in landmass.sorted() {
-                let cell = cells.get(coords).with_context(|| {
-                    anyhow!("Could not find CELL record for LAND with coordinates {coords:?}")
-                })?;
-
-                let plugin = cell.plugins.last().expect("safe");
-                if add_dependency(plugin) {
-                    trace!(
-                        "({:>4}, {:>4})   | {:<50} | {}",
-                        coords.x,
-                        coords.y,
-                        plugin.name,
-                        if cell.inner.id.is_empty() {
-                            cell.inner.region.as_deref().unwrap_or("")
-                        } else {
-                            cell.inner.id.as_str()
-                        }
-                    );
-                }
-            }
         }
 
         let mut masters: Vec<_> = dependencies.drain().collect();
@@ -250,18 +224,9 @@ pub fn save_plugin(
         ));
     }
 
-    if cells.is_some() {
-        debug!("Saving {} CELL and LAND records", landmass.land.len());
-    } else {
-        debug!("Saving {} LAND records", landmass.land.len());
-    }
+    debug!("Saving {} LAND records", landmass.land.len());
 
-    for (coords, land) in landmass.sorted() {
-        if let Some(cells) = cells {
-            let cell = cells.get(coords).expect("safe");
-            plugin.objects.push(TES3Object::Cell(cell.inner.clone()));
-        }
-
+    for (_coords, land) in landmass.sorted() {
         plugin.objects.push(TES3Object::Landscape(land.clone()));
     }
 
@@ -305,7 +270,6 @@ mod tests {
     use crate::land::landscape_diff::LandscapeDiff;
     use crate::land::terrain_map::{LandData, Vec2};
     use crate::land::textures::{IndexVTEX, KnownTextures, RemappedTextures};
-    use crate::merge::cells::ModifiedCell;
     use crate::merge::relative_terrain_map::RelativeTerrainMap;
     use crate::{Landmass, LandmassDiff};
     use std::collections::HashMap;
@@ -313,9 +277,7 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::Arc;
     use std::time::{SystemTime, UNIX_EPOCH};
-    use tes3::esp::{
-        Cell, Landscape, LandscapeFlags, ObjectFlags, Plugin, TES3Object, VertexNormals,
-    };
+    use tes3::esp::{Landscape, LandscapeFlags, ObjectFlags, Plugin, TES3Object, VertexNormals};
 
     fn plugin(name: &str) -> Arc<ParsedPlugin> {
         Arc::new(ParsedPlugin::empty(name))
@@ -352,13 +314,6 @@ mod tests {
             vertex_normals: Some(VertexNormals::default()),
             ..Landscape::default()
         }
-    }
-
-    fn fixture_cell(coords: (i32, i32), id: &str) -> Cell {
-        let mut cell = Cell::default();
-        cell.data.grid = coords;
-        cell.id = id.to_string();
-        cell
     }
 
     fn load_plugin(path: &std::path::Path) -> Plugin {
@@ -495,7 +450,7 @@ mod tests {
     }
 
     #[test]
-    fn save_plugin_writes_non_empty_land_and_cell_content() {
+    fn save_plugin_writes_non_empty_land_without_cell_content() {
         let root = unique_temp_dir("save_plugin_non_empty");
         let data_dir = root.join("Data Files");
         let output_dir = root.join("Output");
@@ -512,15 +467,6 @@ mod tests {
         let land = fixture_land((coords.x, coords.y), 120);
         landmass.insert_land(coords, &source_plugin, &land);
 
-        let mut cells = HashMap::new();
-        cells.insert(
-            coords,
-            ModifiedCell {
-                inner: fixture_cell((coords.x, coords.y), "Output Cell"),
-                plugins: vec![source_plugin.clone()],
-            },
-        );
-
         save_plugin(
             &DataDirs::single(data_dir.clone()),
             &output_dir,
@@ -528,13 +474,12 @@ mod tests {
             SortOrder::None,
             &landmass,
             &KnownTextures::new(),
-            Some(&cells),
         )
         .expect("save should succeed");
 
         let output = load_plugin(&output_dir.join("MergedOut.esp"));
         let (cell_count, land_count, ltex_count) = object_counts(&output);
-        assert_eq!(cell_count, 1);
+        assert_eq!(cell_count, 0);
         assert_eq!(land_count, 1);
         assert_eq!(ltex_count, 0);
 
@@ -560,8 +505,8 @@ mod tests {
     }
 
     #[test]
-    fn save_plugin_remove_cells_mode_keeps_same_land_count() {
-        let root = unique_temp_dir("save_plugin_remove_cells");
+    fn save_plugin_never_writes_cell_records() {
+        let root = unique_temp_dir("save_plugin_no_cells");
         let data_dir = root.join("Data Files");
         let output_dir = root.join("Output");
         fs::create_dir_all(&data_dir).expect("create data dir");
@@ -579,53 +524,42 @@ mod tests {
             &fixture_land((coords.x, coords.y), 200),
         );
 
-        let mut cells = HashMap::new();
-        cells.insert(
-            coords,
-            ModifiedCell {
-                inner: fixture_cell((coords.x, coords.y), "Output Cell"),
-                plugins: vec![source_plugin.clone()],
-            },
-        );
-
         save_plugin(
             &DataDirs::single(data_dir.clone()),
             &output_dir,
-            "WithCells.esp",
+            "NoCellsA.esp",
             SortOrder::None,
             &landmass,
             &KnownTextures::new(),
-            Some(&cells),
         )
-        .expect("save with cells");
+        .expect("save first no-cell output");
 
         save_plugin(
             &DataDirs::single(data_dir),
             &output_dir,
-            "NoCells.esp",
+            "NoCellsB.esp",
             SortOrder::None,
             &landmass,
             &KnownTextures::new(),
-            None,
         )
-        .expect("save without cells");
+        .expect("save second no-cell output");
 
-        let with_cells = load_plugin(&output_dir.join("WithCells.esp"));
-        let no_cells = load_plugin(&output_dir.join("NoCells.esp"));
+        let first = load_plugin(&output_dir.join("NoCellsA.esp"));
+        let second = load_plugin(&output_dir.join("NoCellsB.esp"));
 
-        let with_counts = object_counts(&with_cells);
-        let no_counts = object_counts(&no_cells);
-        assert_eq!(with_counts.1, 1);
-        assert_eq!(no_counts.1, 1);
-        assert_eq!(with_counts.0, 1);
-        assert_eq!(no_counts.0, 0);
+        let first_counts = object_counts(&first);
+        let second_counts = object_counts(&second);
+        assert_eq!(first_counts.1, 1);
+        assert_eq!(second_counts.1, 1);
+        assert_eq!(first_counts.0, 0);
+        assert_eq!(second_counts.0, 0);
 
-        let with_masters = header_masters(&with_cells);
-        let no_masters = header_masters(&no_cells);
-        assert_eq!(with_masters, no_masters);
-        assert_eq!(with_masters.len(), 1);
-        assert_eq!(with_masters[0].0, source_name);
-        assert_eq!(with_masters[0].1, 3);
+        let first_masters = header_masters(&first);
+        let second_masters = header_masters(&second);
+        assert_eq!(first_masters, second_masters);
+        assert_eq!(first_masters.len(), 1);
+        assert_eq!(first_masters[0].0, source_name);
+        assert_eq!(first_masters[0].1, 3);
 
         fs::remove_dir_all(root).expect("cleanup temp dir");
     }
@@ -657,7 +591,6 @@ mod tests {
             SortOrder::None,
             &landmass,
             &KnownTextures::new(),
-            None,
         )
         .expect("save det A");
         save_plugin(
@@ -667,7 +600,6 @@ mod tests {
             SortOrder::None,
             &landmass,
             &KnownTextures::new(),
-            None,
         )
         .expect("save det B");
 
