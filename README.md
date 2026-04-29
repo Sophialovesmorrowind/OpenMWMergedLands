@@ -6,7 +6,7 @@ The output of the tool is a plugin called `Merged Lands.omwaddon` in OpenMW mode
 `Merged Lands.esp` in classic `--vanilla` mode. It should go at the end of your load order.
 Yes, that includes after `Merged Objects.esp` if you're using `TES3Merge`.
 
-The plugin contains a merged representation of any `LAND`, `LTEX`, and `CELL` records edited by mods.
+The plugin contains a merged representation of `LAND` records and the `LTEX` records needed by them. It does not load or emit `CELL` records.
 
 The tool works with both OpenMW (reading `openmw.cfg`) and the original Morrowind engine
 (reading `Morrowind.ini`). OpenMW is the default mode. See [OpenMW Support](#openmw-support)
