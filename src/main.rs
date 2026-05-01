@@ -491,7 +491,7 @@ fn merge_all(cli: &Cli) -> Result<()> {
     debug!("Parsed plugins in {:?}", phase_start.elapsed());
     phase_start = Instant::now();
 
-    let (reference_landmass, modded_landmasses) =
+    let (reference_landmass, modded_landmasses, raw_load_order_landmass) =
         create_reference_and_modded_landmasses(&parsed_plugins, &mut known_textures);
     debug!(
         "Built reference and modded landmasses in {:?}",
@@ -577,7 +577,7 @@ fn merge_all(cli: &Cli) -> Result<()> {
     // [IMPLEMENTATION NOTE] This is an optimization to make MergedLands.esp friendlier.
     info!(":: Cleaning Land ::");
 
-    clean_landmass_diff(&mut merged_lands, &modded_landmasses);
+    clean_landmass_diff(&mut merged_lands, &raw_load_order_landmass);
     debug!("Cleaned merged land diff in {:?}", phase_start.elapsed());
     phase_start = Instant::now();
 
@@ -894,9 +894,46 @@ fn find_allowed_data(plugin: &ParsedPlugin, land: &Landscape) -> LandData {
     allowed_data
 }
 
+fn filter_landscape_to_allowed_data(plugin: &ParsedPlugin, land: &Landscape) -> Option<Landscape> {
+    let allowed_data = find_allowed_data(plugin, land);
+    if allowed_data.is_empty() {
+        return None;
+    }
+
+    let mut filtered = land.clone();
+
+    if !allowed_data.contains(LandData::VERTEX_HEIGHTS) {
+        filtered.vertex_heights = None;
+        filtered.vertex_normals = None;
+        filtered
+            .landscape_flags
+            .remove(LandscapeFlags::USES_VERTEX_HEIGHTS_AND_NORMALS);
+    }
+
+    if !allowed_data.contains(LandData::VERTEX_COLORS) {
+        filtered.vertex_colors = None;
+        filtered
+            .landscape_flags
+            .remove(LandscapeFlags::USES_VERTEX_COLORS);
+    }
+
+    if !allowed_data.contains(LandData::TEXTURES) {
+        filtered.texture_indices = None;
+        filtered
+            .landscape_flags
+            .remove(LandscapeFlags::USES_TEXTURES);
+    }
+
+    if !allowed_data.contains(LandData::WORLD_MAP) {
+        filtered.world_map_data = None;
+    }
+
+    Some(filtered)
+}
+
 /// Applies the winning LAND state from `next` into `merged`, updating the source plugin for
-/// every cell that `next` contributes. This matches `OpenMW`'s last-loaded record behavior while
-/// still respecting the current master-before-plugin ordering used by the tool.
+/// every cell that `next` contributes. This matches last-loaded LAND record behavior while still
+/// respecting the current master-before-plugin ordering used by the tool.
 fn merge_tes3_landmass_into(merged: &mut Landmass, next: &Landmass) {
     for (coords, land) in &next.land {
         let merged_land = if let Some(existing) = merged.land.get(coords) {
@@ -908,6 +945,18 @@ fn merge_tes3_landmass_into(merged: &mut Landmass, next: &Landmass) {
         merged.land.insert(*coords, merged_land);
         merged.plugins.insert(*coords, next.plugin.clone());
     }
+}
+
+fn merge_allowed_landmass_into(merged: &mut Landmass, next: &Landmass) {
+    let mut filtered = Landmass::new(next.plugin.clone());
+
+    for (coords, land) in &next.land {
+        if let Some(land) = filter_landscape_to_allowed_data(&next.plugin, land) {
+            filtered.insert_land(*coords, &next.plugin, &land);
+        }
+    }
+
+    merge_tes3_landmass_into(merged, &filtered);
 }
 
 /// Creates a [`LandmassDiff`] representing the set of [`LandscapeDiff`] between the
@@ -933,7 +982,7 @@ fn find_landmass_diff(landmass: &Landmass, reference: &Landmass) -> LandmassDiff
 fn create_reference_and_modded_landmasses(
     parsed_plugins: &ParsedPlugins,
     known_textures: &mut KnownTextures,
-) -> (Arc<Landmass>, Vec<LandmassDiff>) {
+) -> (Arc<Landmass>, Vec<LandmassDiff>, Arc<Landmass>) {
     let reference_landmass = create_tes3_landmass(
         "ReferenceLandmass.esp",
         parsed_plugins.masters.iter(),
@@ -942,6 +991,7 @@ fn create_reference_and_modded_landmasses(
 
     // TODO(dvd): #feature Support "ignored" maps for hiding differences that we don't care about.
     let mut rolling_reference = reference_landmass.clone();
+    let mut raw_load_order_landmass = reference_landmass.clone();
     let mut modded_landmasses = Vec::new();
 
     for plugin in &parsed_plugins.plugins {
@@ -955,10 +1005,15 @@ fn create_reference_and_modded_landmasses(
         };
 
         modded_landmasses.push(find_landmass_diff(&landmass, &rolling_reference));
-        merge_tes3_landmass_into(&mut rolling_reference, &landmass);
+        merge_allowed_landmass_into(&mut rolling_reference, &landmass);
+        merge_tes3_landmass_into(&mut raw_load_order_landmass, &landmass);
     }
 
-    (Arc::new(reference_landmass), modded_landmasses)
+    (
+        Arc::new(reference_landmass),
+        modded_landmasses,
+        Arc::new(raw_load_order_landmass),
+    )
 }
 
 /// LAND texture indices are categorical winner data instead of numeric deltas. Load order is
@@ -1150,20 +1205,28 @@ fn create_merged_lands_from_reference(reference: &Landmass) -> LandmassDiff {
 
 #[cfg(test)]
 mod tests {
-    use super::{merge_load_order_texture_indices, run_merge_on_worker_thread};
-    use crate::io::parsed_plugins::meta_name;
+    use super::{
+        create_merged_lands_from_reference, create_reference_and_modded_landmasses,
+        merge_landmass_into, merge_load_order_texture_indices, run_merge_on_worker_thread,
+    };
+    use crate::io::meta_schema::{MergeSettings, PluginMeta};
+    use crate::io::parsed_plugins::{ParsedPlugin, ParsedPlugins, meta_name};
     use crate::land::grid_access::Index2D;
     use crate::land::height_map::calculate_vertex_heights_tes3;
+    use crate::land::terrain_map::Vec3;
     use crate::land::textures::IndexVTEX;
     use crate::merge::relative_terrain_map::{IsModified, RelativeTerrainMap};
+    use crate::repair::cleaning::clean_landmass_diff;
     use clap::Parser;
     use std::fmt::Write;
     use std::fs;
     use std::path::{Path, PathBuf};
+    use std::sync::Arc;
+    use std::thread;
     use std::time::{SystemTime, UNIX_EPOCH};
     use tes3::esp::{
         Header, Landscape, LandscapeFlags, LandscapeTexture, ObjectFlags, Plugin, TES3Object,
-        TextureIndices, VertexNormals,
+        TextureIndices, VertexColors, VertexNormals,
     };
 
     fn unique_temp_dir(name: &str) -> PathBuf {
@@ -1252,6 +1315,64 @@ mod tests {
         }
 
         land
+    }
+
+    fn fixture_land_with_vertex_color(
+        coords: (i32, i32),
+        height: i32,
+        color: Vec3<u8>,
+    ) -> Landscape {
+        let mut land = fixture_land(coords, height, None);
+        land.landscape_flags |= LandscapeFlags::USES_VERTEX_COLORS;
+        land.vertex_colors = Some(VertexColors {
+            data: Box::new([[<[u8; 3]>::from(color); 65]; 65]),
+        });
+        land
+    }
+
+    fn parsed_plugin_with_land(name: &str, land: Landscape, meta: PluginMeta) -> Arc<ParsedPlugin> {
+        let mut records = Plugin::new();
+        records.objects.push(TES3Object::Header(Header {
+            author: format!("test:{name}").into(),
+            description: "unit fixture".to_string().into(),
+            masters: Some(Vec::new()),
+            ..Default::default()
+        }));
+        records.objects.push(TES3Object::Landscape(land));
+
+        Arc::new(ParsedPlugin {
+            name: name.to_string(),
+            records,
+            meta,
+        })
+    }
+
+    fn merge_test_plugins(
+        plugins: Vec<Arc<ParsedPlugin>>,
+    ) -> (crate::LandmassDiff, Arc<crate::Landmass>) {
+        let parsed_plugins = ParsedPlugins {
+            masters: Vec::new(),
+            plugins,
+        };
+        let mut known_textures = crate::land::textures::KnownTextures::new();
+        let (reference_landmass, modded_landmasses, raw_load_order_landmass) =
+            create_reference_and_modded_landmasses(&parsed_plugins, &mut known_textures);
+        let mut merged_lands = create_merged_lands_from_reference(&reference_landmass);
+
+        for modded_landmass in &modded_landmasses {
+            merge_landmass_into(&mut merged_lands, modded_landmass);
+        }
+
+        (merged_lands, raw_load_order_landmass)
+    }
+
+    fn run_with_large_stack(test: impl FnOnce() + Send + 'static) {
+        thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(test)
+            .expect("spawn test thread")
+            .join()
+            .expect("test thread should not panic");
     }
 
     fn fixture_ltex(id: &str, index: u32, file_name: &str) -> LandscapeTexture {
@@ -1407,6 +1528,107 @@ mod tests {
         assert!(merged.is_modified());
         assert_eq!(merged.get_value(Index2D::new(0, 0)).as_u16(), 10);
         assert_eq!(merged.get_value(Index2D::new(1, 1)).as_u16(), 0);
+    }
+
+    #[test]
+    fn auto_height_merge_preserves_late_load_order_winner() {
+        run_with_large_stack(|| {
+            let coords = (0, 0);
+            let plugin_a = parsed_plugin_with_land(
+                "A.esp",
+                fixture_land(coords, 100, None),
+                PluginMeta::default(),
+            );
+            let plugin_b = parsed_plugin_with_land(
+                "B.esp",
+                fixture_land(coords, 200, None),
+                PluginMeta::default(),
+            );
+
+            let (merged_lands, _) = merge_test_plugins(vec![plugin_a, plugin_b]);
+            let land = merged_lands
+                .land
+                .get(&crate::Vec2::new(coords.0, coords.1))
+                .expect("merged LAND should exist");
+            let height_map = land
+                .height_map
+                .as_ref()
+                .expect("height map should be merged");
+
+            assert_eq!(height_map.get_value(Index2D::new(1, 1)), 208);
+        });
+    }
+
+    #[test]
+    fn excluded_height_does_not_advance_rolling_reference() {
+        run_with_large_stack(|| {
+            let coords = (0, 0);
+            let excluded_height = PluginMeta {
+                height_map: MergeSettings {
+                    included: false,
+                    ..MergeSettings::default()
+                },
+                ..PluginMeta::default()
+            };
+            let plugin_a =
+                parsed_plugin_with_land("A.esp", fixture_land(coords, 100, None), excluded_height);
+            let plugin_b = parsed_plugin_with_land(
+                "B.esp",
+                fixture_land(coords, 100, None),
+                PluginMeta::default(),
+            );
+
+            let parsed_plugins = ParsedPlugins {
+                masters: Vec::new(),
+                plugins: vec![plugin_a, plugin_b],
+            };
+            let mut known_textures = crate::land::textures::KnownTextures::new();
+            let (_, modded_landmasses, _) =
+                create_reference_and_modded_landmasses(&parsed_plugins, &mut known_textures);
+            let land = modded_landmasses[1]
+                .land
+                .get(&crate::Vec2::new(coords.0, coords.1))
+                .expect("second plugin LAND diff should exist");
+
+            assert!(land.height_map.is_modified());
+        });
+    }
+
+    #[test]
+    fn cleanup_keeps_output_needed_to_override_excluded_loaded_data() {
+        run_with_large_stack(|| {
+            let coords = (0, 0);
+            let plugin_a = parsed_plugin_with_land(
+                "A.esp",
+                fixture_land(coords, 10, None),
+                PluginMeta::default(),
+            );
+
+            let excluded_height = PluginMeta {
+                height_map: MergeSettings {
+                    included: false,
+                    ..MergeSettings::default()
+                },
+                ..PluginMeta::default()
+            };
+            let plugin_b = parsed_plugin_with_land(
+                "B.esp",
+                fixture_land_with_vertex_color(coords, 20, Vec3::new(1, 2, 3)),
+                excluded_height,
+            );
+
+            let (mut merged_lands, raw_load_order_landmass) =
+                merge_test_plugins(vec![plugin_a, plugin_b]);
+            let coords = crate::Vec2::new(coords.0, coords.1);
+            assert!(merged_lands.land.contains_key(&coords));
+
+            clean_landmass_diff(&mut merged_lands, &raw_load_order_landmass);
+
+            assert!(
+                merged_lands.land.contains_key(&coords),
+                "output LAND is needed to override the excluded height from the loaded source stack"
+            );
+        });
     }
 
     #[test]

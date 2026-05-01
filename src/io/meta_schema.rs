@@ -16,11 +16,12 @@ pub enum MetaType {
 /// The [`ConflictStrategy`] that the tool will use applying a [`crate::merge::merge_strategy::MergeStrategy`].
 pub enum ConflictStrategy {
     #[default]
-    /// Choose the best strategy.
+    /// Preserve load-order winner semantics unless a more specific strategy is selected.
     Auto,
-    /// Merge both sides. This is the default for most conflicts.
+    /// Merge both sides by synthesizing numeric values. This is opt-in behavior for cases where
+    /// strict load-order winner semantics are not desired.
     Resolve,
-    /// Use this side of the conflict. This is the default for terrain indices.
+    /// Use this side of the conflict.
     Overwrite,
     /// Use the other side of the conflict, i.e., drop this change.
     Ignore,
