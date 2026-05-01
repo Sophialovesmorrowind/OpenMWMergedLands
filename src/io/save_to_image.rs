@@ -11,6 +11,7 @@ use anyhow::{Context, Result, anyhow};
 use image::imageops::FilterType;
 use image::{DynamicImage, ImageBuffer, Luma, Pixel, Rgb};
 use log::{error, trace};
+use num_traits::ToPrimitive;
 use std::collections::HashSet;
 use std::fs;
 use std::ops::{Deref, DerefMut};
@@ -107,7 +108,7 @@ where
     f64: From<U>,
 {
     let mut min_value = f64::MAX;
-    let mut max_value = f64::MIN;
+    let mut max_value = f64::NEG_INFINITY;
 
     for coords in map.iter_grid() {
         let value = map.get_value(coords);
@@ -118,6 +119,26 @@ where
     (min_value, max_value)
 }
 
+fn scale_to_u8(value: f64, min_value: f64, max_value: f64) -> u8 {
+    if !value.is_finite()
+        || !min_value.is_finite()
+        || !max_value.is_finite()
+        || max_value <= min_value
+    {
+        return 0;
+    }
+
+    clamped_round_to_u8(((value - min_value) / (max_value - min_value)) * 255.0)
+}
+
+fn clamped_round_to_u8(value: f64) -> u8 {
+    value
+        .clamp(0.0, 255.0)
+        .round()
+        .to_u8()
+        .expect("clamped value should convert to u8")
+}
+
 impl<const T: usize> SaveToImage for RelativeTerrainMap<u8, T> {
     fn save_to_image(&self, file_path: &Path) {
         let mut img = ImageBuffer::new(usize_to_u32(T), usize_to_u32(T));
@@ -126,11 +147,7 @@ impl<const T: usize> SaveToImage for RelativeTerrainMap<u8, T> {
 
         for coords in self.iter_grid() {
             let value = f64::from(self.get_value(coords));
-            let scaled = (value - min_value) / (max_value - min_value);
-            let scaled = (scaled * 255.0).clamp(0.0, 255.0);
-            let as_text = format!("{scaled:.0}");
-            let as_u8 = as_text.parse::<u8>().expect("scaled value within 0..=255");
-            *img.get_mut(coords) = Luma::from([as_u8]);
+            *img.get_mut(coords) = Luma::from([scale_to_u8(value, min_value, max_value)]);
         }
 
         save_resized_image::<T, _>(img, file_path, DEFAULT_SCALE_FACTOR)
@@ -147,16 +164,10 @@ impl<const T: usize> SaveToImage for RelativeTerrainMap<i32, T> {
 
         for coords in self.iter_grid() {
             let value = f64::from(self.get_value(coords));
-            let scaled = (value - min_value) / (max_value - min_value);
-            let as_text = format!("{:.0}", (scaled * 255.0).clamp(0.0, 255.0));
-            let as_u8 = as_text.parse::<u8>().expect("scaled value within 0..=255");
+            let as_u8 = scale_to_u8(value, min_value, max_value);
             if self.has_difference(coords) {
-                let dark = format!("{:.0}", (f64::from(as_u8) * 0.98).clamp(0.0, 255.0))
-                    .parse::<u8>()
-                    .expect("dark value within 0..=255");
-                let light = format!("{:.0}", (f64::from(as_u8) * 1.04).clamp(0.0, 255.0))
-                    .parse::<u8>()
-                    .expect("light value within 0..=255");
+                let dark = clamped_round_to_u8(f64::from(as_u8) * 0.98);
+                let light = clamped_round_to_u8(f64::from(as_u8) * 1.04);
                 *img.get_mut(coords) = Rgb::from([dark, light, dark]);
             } else {
                 *img.get_mut(coords) = Rgb::from([as_u8, as_u8, as_u8]);
@@ -373,5 +384,22 @@ pub fn save_landmass_images(
                 &mut written_merged_images,
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::scale_to_u8;
+
+    #[test]
+    fn scale_to_u8_handles_flat_maps() {
+        assert_eq!(scale_to_u8(42.0, 42.0, 42.0), 0);
+    }
+
+    #[test]
+    fn scale_to_u8_maps_range_to_byte_values() {
+        assert_eq!(scale_to_u8(10.0, 10.0, 20.0), 0);
+        assert_eq!(scale_to_u8(20.0, 10.0, 20.0), 255);
+        assert_eq!(scale_to_u8(15.0, 10.0, 20.0), 128);
     }
 }

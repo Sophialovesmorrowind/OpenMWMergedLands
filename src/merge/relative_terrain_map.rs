@@ -183,7 +183,10 @@ pub fn recompute_vertex_normals(
         for coords in height_map.iter_grid() {
             if !height_map.has_difference(coords) {
                 assert_eq!(vertex_normals.get_difference(coords), Vec3::default());
-                *recomputed_vertex_normals.get_mut(coords) = vertex_normals.get_value(coords);
+                let existing = vertex_normals.get_value(coords);
+                if existing != Vec3::default() {
+                    *recomputed_vertex_normals.get_mut(coords) = existing;
+                }
             }
         }
     }
@@ -266,5 +269,19 @@ mod tests {
 
         let recomputed = recompute_vertex_normals(&height_map, Some(&old_normals));
         assert_eq!(recomputed.get(Index2D::new(10, 10)), Vec3::new(7, -3, 2));
+    }
+
+    #[test]
+    fn recompute_vertex_normals_does_not_preserve_zero_existing_values() {
+        let height_reference: Box<[[i32; 65]; 65]> = vec![[0i32; 65]; 65]
+            .into_boxed_slice()
+            .try_into()
+            .expect("valid 65x65 height map");
+        let height_map = RelativeTerrainMap::<i32, 65>::empty(*height_reference);
+        let old_normals_reference: TerrainMap<Vec3<i8>, 65> = [[Vec3::default(); 65]; 65];
+        let old_normals = RelativeTerrainMap::<Vec3<i8>, 65>::empty(old_normals_reference);
+
+        let recomputed = recompute_vertex_normals(&height_map, Some(&old_normals));
+        assert_ne!(recomputed.get(Index2D::new(10, 10)), Vec3::default());
     }
 }
