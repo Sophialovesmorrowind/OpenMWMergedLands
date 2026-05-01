@@ -491,11 +491,8 @@ fn merge_all(cli: &Cli) -> Result<()> {
     debug!("Parsed plugins in {:?}", phase_start.elapsed());
     phase_start = Instant::now();
 
-    let (reference_landmass, modded_landmasses) = create_reference_and_modded_landmasses(
-        &parsed_plugins,
-        &mut known_textures,
-        is_openmw_mode,
-    );
+    let (reference_landmass, modded_landmasses) =
+        create_reference_and_modded_landmasses(&parsed_plugins, &mut known_textures);
     debug!(
         "Built reference and modded landmasses in {:?}",
         phase_start.elapsed()
@@ -539,7 +536,7 @@ fn merge_all(cli: &Cli) -> Result<()> {
     info!(":: Merging Lands ::");
 
     for modded_landmass in &modded_landmasses {
-        merge_landmass_into(&mut merged_lands, modded_landmass, is_openmw_mode);
+        merge_landmass_into(&mut merged_lands, modded_landmass);
     }
 
     // We fix seams as a post-processing step because individual mods can introduce
@@ -580,7 +577,7 @@ fn merge_all(cli: &Cli) -> Result<()> {
     // [IMPLEMENTATION NOTE] This is an optimization to make MergedLands.esp friendlier.
     info!(":: Cleaning Land ::");
 
-    clean_landmass_diff(&mut merged_lands, &modded_landmasses, is_openmw_mode);
+    clean_landmass_diff(&mut merged_lands, &modded_landmasses);
     debug!("Cleaned merged land diff in {:?}", phase_start.elapsed());
     phase_start = Instant::now();
 
@@ -930,13 +927,12 @@ fn find_landmass_diff(landmass: &Landmass, reference: &Landmass) -> LandmassDiff
 
 /// Builds the initial reference landmass and the plugin diffs used for the final merge.
 ///
-/// In classic mode, every plugin diff is computed against the static master reference.
-/// In `OpenMW` mode, plugin diffs are computed against the rolling winning LAND state from the
-/// exact ordered content list, after verifying that any declared masters load earlier.
+/// Plugin diffs are computed against the rolling winning LAND state from load order. That keeps
+/// each diff local to what the plugin actually changed relative to previous winners, rather than
+/// pretending there is a useful engine-specific LAND merge model. There isn't. Thankfully.
 fn create_reference_and_modded_landmasses(
     parsed_plugins: &ParsedPlugins,
     known_textures: &mut KnownTextures,
-    is_openmw_mode: bool,
 ) -> (Arc<Landmass>, Vec<LandmassDiff>) {
     let reference_landmass = create_tes3_landmass(
         "ReferenceLandmass.esp",
@@ -945,48 +941,29 @@ fn create_reference_and_modded_landmasses(
     );
 
     // TODO(dvd): #feature Support "ignored" maps for hiding differences that we don't care about.
-    let modded_landmasses = if is_openmw_mode {
-        let mut rolling_reference = reference_landmass.clone();
-        let mut modded_landmasses = Vec::new();
+    let mut rolling_reference = reference_landmass.clone();
+    let mut modded_landmasses = Vec::new();
 
-        for plugin in &parsed_plugins.plugins {
-            if plugin.meta.meta_type == MetaType::MergedLands {
-                trace!("Skipping {}", plugin.name);
-                continue;
-            }
-
-            let Some(landmass) = try_create_landmass(plugin, known_textures) else {
-                continue;
-            };
-
-            modded_landmasses.push(find_landmass_diff(&landmass, &rolling_reference));
-            merge_tes3_landmass_into(&mut rolling_reference, &landmass);
+    for plugin in &parsed_plugins.plugins {
+        if plugin.meta.meta_type == MetaType::MergedLands {
+            trace!("Skipping {}", plugin.name);
+            continue;
         }
 
-        modded_landmasses
-    } else {
-        parsed_plugins
-            .plugins
-            .iter()
-            .filter_map(|plugin| {
-                if plugin.meta.meta_type == MetaType::MergedLands {
-                    trace!("Skipping {}", plugin.name);
-                    return None;
-                }
+        let Some(landmass) = try_create_landmass(plugin, known_textures) else {
+            continue;
+        };
 
-                try_create_landmass(plugin, known_textures)
-                    .map(|landmass| find_landmass_diff(&landmass, &reference_landmass))
-            })
-            .collect()
-    };
+        modded_landmasses.push(find_landmass_diff(&landmass, &rolling_reference));
+        merge_tes3_landmass_into(&mut rolling_reference, &landmass);
+    }
 
     (Arc::new(reference_landmass), modded_landmasses)
 }
 
-/// In `OpenMW` mode, LAND texture indices are treated as categorical winner data instead of numeric
-/// deltas. The config's load order is top-to-bottom, so we effectively apply it bottom-to-top:
-/// the newest plugin wins for the coordinates it actually changed.
-fn merge_openmw_texture_indices(
+/// LAND texture indices are categorical winner data instead of numeric deltas. Load order is
+/// top-to-bottom, so the newest plugin wins for the coordinates it actually changed.
+fn merge_load_order_texture_indices(
     old: Option<&RelativeTerrainMap<IndexVTEX, 16>>,
     new: Option<&RelativeTerrainMap<IndexVTEX, 16>>,
 ) -> Option<RelativeTerrainMap<IndexVTEX, 16>> {
@@ -1023,12 +1000,21 @@ fn merge_openmw_texture_indices(
     ))
 }
 
+/// With rolling-reference diffs, `Auto` should preserve load-order winner semantics. Explicit
+/// strategies still mean exactly what the user asked for; `Auto` is the only policy default here.
+fn load_order_auto_strategy(conflict_strategy: ConflictStrategy) -> ConflictStrategy {
+    if matches!(conflict_strategy, ConflictStrategy::Auto) {
+        ConflictStrategy::Overwrite
+    } else {
+        conflict_strategy
+    }
+}
+
 /// Merges `old` and `new` [`LandscapeDiff`].
 fn merge_landscape_diff(
     plugin: &Arc<ParsedPlugin>,
     old: &LandscapeDiff,
     new: &LandscapeDiff,
-    is_openmw_mode: bool,
 ) -> LandscapeDiff {
     let mut merged = old.clone();
     merged.plugins.push((plugin.clone(), new.modified_data()));
@@ -1041,7 +1027,7 @@ fn merge_landscape_diff(
         "height_map",
         old.height_map.as_ref(),
         new.height_map.as_ref(),
-        plugin.meta.height_map.conflict_strategy,
+        load_order_auto_strategy(plugin.meta.height_map.conflict_strategy),
     );
 
     merged.vertex_normals = apply_merge_strategy(
@@ -1050,7 +1036,7 @@ fn merge_landscape_diff(
         "vertex_normals",
         old.vertex_normals.as_ref(),
         new.vertex_normals.as_ref(),
-        plugin.meta.height_map.conflict_strategy,
+        load_order_auto_strategy(plugin.meta.height_map.conflict_strategy),
     );
 
     if let Some(vertex_normals) = merged.vertex_normals.as_ref() {
@@ -1073,7 +1059,7 @@ fn merge_landscape_diff(
         "world_map_data",
         old.world_map_data.as_ref(),
         new.world_map_data.as_ref(),
-        plugin.meta.world_map_data.conflict_strategy,
+        load_order_auto_strategy(plugin.meta.world_map_data.conflict_strategy),
     );
 
     merged.vertex_colors = apply_merge_strategy(
@@ -1082,15 +1068,14 @@ fn merge_landscape_diff(
         "vertex_colors",
         old.vertex_colors.as_ref(),
         new.vertex_colors.as_ref(),
-        plugin.meta.vertex_colors.conflict_strategy,
+        load_order_auto_strategy(plugin.meta.vertex_colors.conflict_strategy),
     );
 
-    merged.texture_indices = if is_openmw_mode
-        && matches!(
-            plugin.meta.texture_indices.conflict_strategy,
-            ConflictStrategy::Auto | ConflictStrategy::Overwrite
-        ) {
-        merge_openmw_texture_indices(old.texture_indices.as_ref(), new.texture_indices.as_ref())
+    merged.texture_indices = if matches!(
+        plugin.meta.texture_indices.conflict_strategy,
+        ConflictStrategy::Auto | ConflictStrategy::Overwrite
+    ) {
+        merge_load_order_texture_indices(old.texture_indices.as_ref(), new.texture_indices.as_ref())
     } else {
         apply_merge_strategy(
             coords,
@@ -1106,7 +1091,7 @@ fn merge_landscape_diff(
 }
 
 /// Merges `plugin` [`LandmassDiff`] into `merged` [`LandmassDiff`].
-fn merge_landmass_into(merged: &mut LandmassDiff, plugin: &LandmassDiff, is_openmw_mode: bool) {
+fn merge_landmass_into(merged: &mut LandmassDiff, plugin: &LandmassDiff) {
     debug!(
         "Merging {} LAND records from {} into {}",
         plugin.land.len(),
@@ -1116,7 +1101,7 @@ fn merge_landmass_into(merged: &mut LandmassDiff, plugin: &LandmassDiff, is_open
 
     for (coords, land) in plugin.sorted() {
         if let Some(existing) = merged.land.get_mut(coords) {
-            let updated = merge_landscape_diff(&plugin.plugin, existing, land, is_openmw_mode);
+            let updated = merge_landscape_diff(&plugin.plugin, existing, land);
             *existing = updated;
         } else {
             let mut merged_land = land.clone();
@@ -1165,7 +1150,7 @@ fn create_merged_lands_from_reference(reference: &Landmass) -> LandmassDiff {
 
 #[cfg(test)]
 mod tests {
-    use super::{merge_openmw_texture_indices, run_merge_on_worker_thread};
+    use super::{merge_load_order_texture_indices, run_merge_on_worker_thread};
     use crate::io::parsed_plugins::meta_name;
     use crate::land::grid_access::Index2D;
     use crate::land::height_map::calculate_vertex_heights_tes3;
@@ -1392,7 +1377,7 @@ mod tests {
     }
 
     #[test]
-    fn openmw_texture_merge_applies_only_changed_cells_from_new() {
+    fn load_order_texture_merge_applies_only_changed_cells_from_new() {
         let base = [[idx(0); 16]; 16];
 
         let mut old = RelativeTerrainMap::<IndexVTEX, 16>::empty(base);
@@ -1401,7 +1386,7 @@ mod tests {
         let mut new = RelativeTerrainMap::<IndexVTEX, 16>::empty(base);
         new.set_value(Index2D::new(1, 1), idx(40));
 
-        let merged = merge_openmw_texture_indices(Some(&old), Some(&new)).expect("merged map");
+        let merged = merge_load_order_texture_indices(Some(&old), Some(&new)).expect("merged map");
 
         assert_eq!(merged.get_value(Index2D::new(0, 0)).as_u16(), 10);
         assert_eq!(merged.get_value(Index2D::new(1, 1)).as_u16(), 40);
@@ -1410,7 +1395,7 @@ mod tests {
     }
 
     #[test]
-    fn openmw_texture_merge_returns_old_when_new_has_no_effective_changes() {
+    fn load_order_texture_merge_returns_old_when_new_has_no_effective_changes() {
         let base = [[idx(0); 16]; 16];
 
         let mut old = RelativeTerrainMap::<IndexVTEX, 16>::empty(base);
@@ -1418,7 +1403,7 @@ mod tests {
 
         let new = RelativeTerrainMap::<IndexVTEX, 16>::empty(base);
 
-        let merged = merge_openmw_texture_indices(Some(&old), Some(&new)).expect("merged map");
+        let merged = merge_load_order_texture_indices(Some(&old), Some(&new)).expect("merged map");
         assert!(merged.is_modified());
         assert_eq!(merged.get_value(Index2D::new(0, 0)).as_u16(), 10);
         assert_eq!(merged.get_value(Index2D::new(1, 1)).as_u16(), 0);

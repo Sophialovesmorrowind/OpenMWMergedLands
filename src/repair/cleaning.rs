@@ -1,5 +1,5 @@
 use crate::LandmassDiff;
-use crate::io::parsed_plugins::{ParsedPlugin, ParsedPlugins, is_esp};
+use crate::io::parsed_plugins::{ParsedPlugin, ParsedPlugins};
 use crate::land::grid_access::SquareGridIterator;
 use crate::land::landscape_diff::LandscapeDiff;
 use crate::land::textures::{KnownTextures, RemappedTextures};
@@ -61,11 +61,7 @@ fn update_known_textures(plugin: &Arc<ParsedPlugin>, known_textures: &mut KnownT
 }
 
 /// Remove any unmodified [`crate::LandscapeDiff`] from the [`LandmassDiff`].
-pub fn clean_landmass_diff(
-    landmass: &mut LandmassDiff,
-    modded_landmasses: &[LandmassDiff],
-    is_openmw_mode: bool,
-) {
+pub fn clean_landmass_diff(landmass: &mut LandmassDiff, modded_landmasses: &[LandmassDiff]) {
     assert_eq!(repair_landmass_seams(landmass), 0);
 
     let mut modded_landmasses_map = HashMap::with_capacity(modded_landmasses.len());
@@ -84,36 +80,14 @@ pub fn clean_landmass_diff(
             continue;
         }
 
-        let modded_landmass_land = if is_openmw_mode {
-            // In OpenMW mode, ESPs can depend on ESPs. For cleanup purposes we want the final
-            // plugin-like LAND source for this specific cell, not "exactly one contributor".
-            // `land.plugins` is already ordered by merge order for this cell, so the last
-            // plugin-like entry with a LAND diff at `coords` is the correct comparison target.
-            let Some(modded_landmass_land) = land.plugins.iter().rev().find_map(|(plugin, _)| {
-                modded_landmasses_map
-                    .get(&plugin.name)
-                    .and_then(|modded_landmass| modded_landmass.land.get(coords))
-            }) else {
-                continue;
-            };
-
-            modded_landmass_land
-        } else {
-            let num_esps = land
-                .plugins
-                .iter()
-                .filter(|plugin| is_esp(&plugin.0.name))
-                .count();
-
-            if num_esps != 1 {
-                continue;
-            }
-
-            let plugin = land.plugins.last().expect("safe").0.clone();
-            assert!(is_esp(&plugin.name));
-
-            let modded_landmass = modded_landmasses_map.get(&plugin.name).expect("safe");
-            modded_landmass.land.get(coords).expect("safe")
+        // `land.plugins` is ordered by merge order for this cell. For cleanup we want the final
+        // contributing plugin LAND source for this specific cell, not "exactly one ESP".
+        let Some(modded_landmass_land) = land.plugins.iter().rev().find_map(|(plugin, _)| {
+            modded_landmasses_map
+                .get(&plugin.name)
+                .and_then(|modded_landmass| modded_landmass.land.get(coords))
+        }) else {
+            continue;
         };
 
         if !has_any_difference(land, modded_landmass_land) {
