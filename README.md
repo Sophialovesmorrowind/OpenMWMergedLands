@@ -245,5 +245,5 @@ conflict_strategy = "Ignore"
 ### Defaults
 
 Each type of `LAND` record is `included = true` and `conflict_strategy = "Auto"` by default. `"Auto"` preserves load-order winner semantics: later plugins win for the LAND entries they actually changed. Use `"Resolve"` only when you explicitly want the tool to synthesize blended numeric values instead of following load order.
-Setting `included = false` excludes that data from the merged output and from the rolling reference used for later plugins.
+Setting `included = false` excludes that plugin's data from the merge and from the rolling reference used for later plugins. If another included field requires an output `LAND` record, the generated plugin may still write required `LAND` fields from an earlier winner so the excluded data does not win at the end of the load order.
 You should not write a `.mergedlands.toml` file until it is known to be necessary.

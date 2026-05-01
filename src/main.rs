@@ -1158,7 +1158,7 @@ fn merge_landmass_into(merged: &mut LandmassDiff, plugin: &LandmassDiff) {
         if let Some(existing) = merged.land.get_mut(coords) {
             let updated = merge_landscape_diff(&plugin.plugin, existing, land);
             *existing = updated;
-        } else {
+        } else if land.is_modified() {
             let mut merged_land = land.clone();
             merged_land
                 .plugins
@@ -1704,6 +1704,48 @@ mod tests {
             assert!(
                 merged_lands.land.contains_key(&coords),
                 "output LAND is needed because saving the included color also materializes a default height that overrides the excluded loaded height"
+            );
+        });
+    }
+
+    #[test]
+    fn all_excluded_new_land_does_not_create_default_output_land() {
+        run_with_large_stack(|| {
+            let coords = (0, 0);
+            let excluded_land = PluginMeta {
+                height_map: MergeSettings {
+                    included: false,
+                    ..MergeSettings::default()
+                },
+                vertex_colors: MergeSettings {
+                    included: false,
+                    ..MergeSettings::default()
+                },
+                texture_indices: MergeSettings {
+                    included: false,
+                    ..MergeSettings::default()
+                },
+                world_map_data: MergeSettings {
+                    included: false,
+                    ..MergeSettings::default()
+                },
+                ..PluginMeta::default()
+            };
+            let plugin = parsed_plugin_with_land(
+                "Patch.esp",
+                fixture_land_with_vertex_color(coords, 20, Vec3::new(1, 2, 3)),
+                excluded_land,
+            );
+
+            let (mut merged_lands, raw_load_order_landmass) = merge_test_plugins(vec![plugin]);
+            let coords = crate::Vec2::new(coords.0, coords.1);
+            assert!(!merged_lands.land.contains_key(&coords));
+
+            clean_landmass_diff(&mut merged_lands, &raw_load_order_landmass);
+
+            assert!(
+                !merged_lands.land.contains_key(&coords),
+                "an all-excluded new LAND cell must not become a default generated LAND cell"
             );
         });
     }
