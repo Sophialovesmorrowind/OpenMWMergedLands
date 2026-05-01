@@ -375,7 +375,13 @@ pub fn save_landmass_images(
 
     for plugin in modded_landmasses {
         for (coords, land) in plugin.sorted() {
-            let merged_land = reference.land.get(coords).expect("safe");
+            let Some(merged_land) = reference.land.get(coords) else {
+                trace!(
+                    "({:>4}, {:>4}) | {:<50} | Skipping conflict image for LAND not present in merged output",
+                    coords.x, coords.y, plugin.plugin.name
+                );
+                continue;
+            };
             save_landscape_images(
                 merged_lands_dir,
                 &plugin.plugin,
@@ -389,7 +395,16 @@ pub fn save_landmass_images(
 
 #[cfg(test)]
 mod tests {
-    use super::scale_to_u8;
+    use super::{save_landmass_images, scale_to_u8};
+    use crate::LandmassDiff;
+    use crate::io::parsed_plugins::ParsedPlugin;
+    use crate::land::landscape_diff::LandscapeDiff;
+    use crate::land::terrain_map::Vec2;
+    use std::collections::HashMap;
+    use std::fs;
+    use std::sync::Arc;
+    use std::time::{SystemTime, UNIX_EPOCH};
+    use tes3::esp::ObjectFlags;
 
     #[test]
     fn scale_to_u8_handles_flat_maps() {
@@ -401,5 +416,48 @@ mod tests {
         assert_eq!(scale_to_u8(10.0, 10.0, 20.0), 0);
         assert_eq!(scale_to_u8(20.0, 10.0, 20.0), 255);
         assert_eq!(scale_to_u8(15.0, 10.0, 20.0), 128);
+    }
+
+    #[test]
+    fn save_landmass_images_skips_plugin_land_missing_from_merged_output() {
+        let unique = format!(
+            "merged_lands_images_missing_{}_{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("clock before unix epoch")
+                .as_nanos()
+        );
+        let output_dir = std::env::temp_dir().join(unique);
+
+        let plugin = Arc::new(ParsedPlugin::empty("plugin.esp"));
+        let reference = LandmassDiff {
+            plugin: plugin.clone(),
+            land: HashMap::new(),
+        };
+
+        let coords = Vec2::new(0, 0);
+        let mut plugin_land = HashMap::new();
+        plugin_land.insert(
+            coords,
+            LandscapeDiff {
+                coords,
+                flags: ObjectFlags::default(),
+                height_map: None,
+                vertex_normals: None,
+                world_map_data: None,
+                vertex_colors: None,
+                texture_indices: None,
+                plugins: Vec::new(),
+            },
+        );
+        let modded = LandmassDiff {
+            plugin,
+            land: plugin_land,
+        };
+
+        save_landmass_images(&output_dir, &reference, &[modded]);
+
+        fs::remove_dir_all(output_dir).ok();
     }
 }
