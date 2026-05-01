@@ -216,13 +216,6 @@ pub fn is_esm(path: impl AsRef<Path>) -> bool {
         .is_some_and(|ext| ext.eq_ignore_ascii_case("esm"))
 }
 
-/// Returns `true` if `path` ends with `.esp`, ignoring case.
-pub fn is_esp(path: impl AsRef<Path>) -> bool {
-    path.as_ref()
-        .extension()
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("esp"))
-}
-
 /// Sorts `plugin_list` by last modified time, with `.esm` files given priority.
 pub fn sort_plugins(
     data_dirs: &DataDirs,
@@ -627,7 +620,7 @@ impl ParsedPlugins {
 
 #[cfg(test)]
 mod tests {
-    use super::{DataDirs, is_esm, is_esp, meta_name, sort_plugins};
+    use super::{DataDirs, is_esm, meta_name, sort_plugins};
     use crate::cli::SortOrder;
     use std::fs;
     use std::path::Path;
@@ -653,13 +646,10 @@ mod tests {
     }
 
     #[test]
-    fn extension_helpers_are_case_insensitive() {
+    fn esm_extension_helper_is_case_insensitive() {
         assert!(is_esm("Morrowind.ESM"));
-        assert!(is_esp("Patch.EsP"));
-
         assert!(!is_esm("mod.esp"));
-        assert!(!is_esp("mod.esm"));
-        assert!(!is_esp("README"));
+        assert!(!is_esm("README"));
     }
 
     #[test]

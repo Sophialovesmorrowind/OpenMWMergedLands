@@ -22,22 +22,9 @@ impl MergeStrategy for OverwriteStrategy {
         let mut new = lhs.clone();
 
         for coords in new.iter_grid() {
-            let lhs_diff = lhs.has_difference(coords);
-            let rhs_diff = rhs.has_difference(coords);
-
-            let mut diff = Default::default();
-            if lhs_diff && !rhs_diff {
-                diff = lhs.get_difference(coords);
-            } else if !lhs_diff && rhs_diff {
-                diff = rhs.get_difference(coords);
-            } else if !lhs_diff && !rhs_diff {
-                // NOP.
-            } else {
-                // Conflict -- choose rhs.
-                diff = rhs.get_difference(coords);
+            if rhs.has_difference(coords) {
+                new.set_value(coords, rhs.get_value(coords));
             }
-
-            new.set_difference(coords, diff);
         }
 
         new
@@ -49,7 +36,7 @@ mod tests {
     use super::OverwriteStrategy;
     use crate::io::parsed_plugins::ParsedPlugin;
     use crate::land::grid_access::Index2D;
-    use crate::land::terrain_map::Vec2;
+    use crate::land::terrain_map::{Vec2, Vec3};
     use crate::merge::merge_strategy::MergeStrategy;
     use crate::merge::relative_terrain_map::RelativeTerrainMap;
 
@@ -70,5 +57,22 @@ mod tests {
         let merged = strategy.apply(coords, &plugin, value_name, &lhs, &rhs);
 
         assert_eq!(merged.get_value(Index2D::new(0, 0)), 9);
+    }
+
+    #[test]
+    fn overwrite_strategy_uses_rhs_absolute_value_when_references_differ() {
+        let plugin = ParsedPlugin::empty("plugin.esp");
+        let coords = Vec2::new(0, 0);
+        let value_name = "vertex_colors";
+
+        let lhs = RelativeTerrainMap::<Vec3<u8>, 2>::empty([[Vec3::new(0, 0, 0); 2]; 2]);
+
+        let mut rhs = RelativeTerrainMap::<Vec3<u8>, 2>::empty([[Vec3::new(115, 110, 96); 2]; 2]);
+        rhs.set_value(Index2D::new(0, 0), Vec3::new(55, 54, 53));
+
+        let strategy = OverwriteStrategy::default();
+        let merged = strategy.apply(coords, &plugin, value_name, &lhs, &rhs);
+
+        assert_eq!(merged.get_value(Index2D::new(0, 0)), Vec3::new(55, 54, 53));
     }
 }

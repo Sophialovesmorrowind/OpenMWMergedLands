@@ -1,17 +1,20 @@
-use crate::LandmassDiff;
-use crate::io::parsed_plugins::{ParsedPlugin, ParsedPlugins, is_esp};
-use crate::land::grid_access::SquareGridIterator;
+use crate::io::parsed_plugins::{ParsedPlugin, ParsedPlugins};
+use crate::land::conversions::{texture_indices, vertex_colors, vertex_normals, world_map_data};
+use crate::land::grid_access::{GridAccessor2D, SquareGridIterator};
+use crate::land::height_map::try_calculate_height_map;
 use crate::land::landscape_diff::LandscapeDiff;
+use crate::land::terrain_map::TerrainMap;
 use crate::land::textures::{KnownTextures, RemappedTextures};
-use crate::merge::relative_terrain_map::RelativeTerrainMap;
+use crate::merge::relative_terrain_map::{DefaultRelativeTerrainMap, RelativeTerrainMap};
 use crate::merge::relative_to::RelativeTo;
 use crate::repair::seam_detection::repair_landmass_seams;
+use crate::{Landmass, LandmassDiff};
 use log::{debug, warn};
-use std::collections::HashMap;
 use std::sync::Arc;
-use tes3::esp::LandscapeTexture;
+use tes3::esp::{Landscape, LandscapeTexture};
 
-pub fn has_difference<U: RelativeTo, const T: usize>(
+#[cfg(test)]
+fn has_difference<U: RelativeTo, const T: usize>(
     lhs: Option<&RelativeTerrainMap<U, T>>,
     rhs: Option<&RelativeTerrainMap<U, T>>,
 ) -> bool {
@@ -34,24 +37,56 @@ pub fn has_difference<U: RelativeTo, const T: usize>(
     false
 }
 
-fn has_any_difference(reference: &LandscapeDiff, plugin: &LandscapeDiff) -> bool {
-    has_difference(reference.height_map.as_ref(), plugin.height_map.as_ref())
-        || has_difference(
-            reference.vertex_normals.as_ref(),
-            plugin.vertex_normals.as_ref(),
-        )
-        || has_difference(
-            reference.world_map_data.as_ref(),
-            plugin.world_map_data.as_ref(),
-        )
-        || has_difference(
-            reference.vertex_colors.as_ref(),
-            plugin.vertex_colors.as_ref(),
-        )
-        || has_difference(
-            reference.texture_indices.as_ref(),
-            plugin.texture_indices.as_ref(),
-        )
+fn differs_from_landscape<U: RelativeTo, const T: usize>(
+    merged: Option<&RelativeTerrainMap<U, T>>,
+    loaded: Option<&TerrainMap<U, T>>,
+) -> bool {
+    let Some(merged) = merged else {
+        return false;
+    };
+
+    let Some(loaded) = loaded else {
+        return true;
+    };
+
+    for coords in merged.iter_grid() {
+        if merged.get_value(coords) != loaded.get(coords) {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn differs_required_field_from_landscape<U: RelativeTo, const T: usize>(
+    merged: Option<&RelativeTerrainMap<U, T>>,
+    default: &RelativeTerrainMap<U, T>,
+    loaded: Option<&TerrainMap<U, T>>,
+) -> bool {
+    differs_from_landscape(Some(merged.unwrap_or(default)), loaded)
+}
+
+fn has_any_difference_from_loaded_landscape(
+    merged: &LandscapeDiff,
+    loaded: Option<&Landscape>,
+) -> bool {
+    let height_map = loaded.and_then(try_calculate_height_map);
+    let vertex_normals = loaded.and_then(vertex_normals);
+    let world_map_data = loaded.and_then(world_map_data);
+    let vertex_colors = loaded.and_then(vertex_colors);
+    let texture_indices = loaded.and_then(texture_indices);
+
+    differs_required_field_from_landscape(
+        merged.height_map.as_ref(),
+        &DefaultRelativeTerrainMap::HEIGHT_MAP,
+        height_map.as_ref(),
+    ) || differs_required_field_from_landscape(
+        merged.vertex_normals.as_ref(),
+        &DefaultRelativeTerrainMap::VERTEX_NORMALS,
+        vertex_normals.as_ref(),
+    ) || differs_from_landscape(merged.world_map_data.as_ref(), world_map_data.as_ref())
+        || differs_from_landscape(merged.vertex_colors.as_ref(), vertex_colors.as_ref())
+        || differs_from_landscape(merged.texture_indices.as_ref(), texture_indices.as_ref())
 }
 
 fn update_known_textures(plugin: &Arc<ParsedPlugin>, known_textures: &mut KnownTextures) {
@@ -60,71 +95,24 @@ fn update_known_textures(plugin: &Arc<ParsedPlugin>, known_textures: &mut KnownT
     }
 }
 
-/// Remove any unmodified [`crate::LandscapeDiff`] from the [`LandmassDiff`].
-pub fn clean_landmass_diff(
-    landmass: &mut LandmassDiff,
-    modded_landmasses: &[LandmassDiff],
-    is_openmw_mode: bool,
-) {
+/// Remove any [`crate::LandscapeDiff`] from the [`LandmassDiff`] that would not change the final
+/// loaded LAND state.
+pub fn clean_landmass_diff(landmass: &mut LandmassDiff, loaded_landmass: &Landmass) {
     assert_eq!(repair_landmass_seams(landmass), 0);
 
-    let mut modded_landmasses_map = HashMap::with_capacity(modded_landmasses.len());
-    for modded_landmass in modded_landmasses {
-        modded_landmasses_map.insert(modded_landmass.plugin.name.clone(), modded_landmass);
-    }
-
     let mut unmodified = Vec::new();
-    let mut num_unmodified_from_reference = 0;
-    let mut num_unmodified_from_plugin = 0;
+    let mut num_unmodified_from_loaded_landscape = 0;
 
     for (coords, land) in &mut landmass.land {
-        if !land.is_modified() {
+        if !has_any_difference_from_loaded_landscape(land, loaded_landmass.land.get(coords)) {
             unmodified.push(*coords);
-            num_unmodified_from_reference += 1;
-            continue;
-        }
-
-        let modded_landmass_land = if is_openmw_mode {
-            // In OpenMW mode, ESPs can depend on ESPs. For cleanup purposes we want the final
-            // plugin-like LAND source for this specific cell, not "exactly one contributor".
-            // `land.plugins` is already ordered by merge order for this cell, so the last
-            // plugin-like entry with a LAND diff at `coords` is the correct comparison target.
-            let Some(modded_landmass_land) = land.plugins.iter().rev().find_map(|(plugin, _)| {
-                modded_landmasses_map
-                    .get(&plugin.name)
-                    .and_then(|modded_landmass| modded_landmass.land.get(coords))
-            }) else {
-                continue;
-            };
-
-            modded_landmass_land
-        } else {
-            let num_esps = land
-                .plugins
-                .iter()
-                .filter(|plugin| is_esp(&plugin.0.name))
-                .count();
-
-            if num_esps != 1 {
-                continue;
-            }
-
-            let plugin = land.plugins.last().expect("safe").0.clone();
-            assert!(is_esp(&plugin.name));
-
-            let modded_landmass = modded_landmasses_map.get(&plugin.name).expect("safe");
-            modded_landmass.land.get(coords).expect("safe")
-        };
-
-        if !has_any_difference(land, modded_landmass_land) {
-            unmodified.push(*coords);
-            num_unmodified_from_plugin += 1;
+            num_unmodified_from_loaded_landscape += 1;
         }
     }
 
-    debug!("Removing {num_unmodified_from_reference} LAND records unmodified from reference");
-
-    debug!("Removing {num_unmodified_from_plugin} LAND records unmodified from plugins");
+    debug!(
+        "Removing {num_unmodified_from_loaded_landscape} LAND records unmodified from loaded landscape"
+    );
 
     for coords in unmodified.drain(..) {
         landmass.land.remove(&coords);
@@ -178,7 +166,7 @@ pub fn clean_known_textures(
 
         if invalid_texture_indices > 0 {
             warn!(
-                "({:>4}, {:>4}) | {} invalid texture indices in merged LAND (first VTEX index = {}) will be replaced with the default texture",
+                "({:>4}, {:>4}) | {} invalid texture indices in merged LAND (first VTEX index = {}) will be replaced with a fallback texture",
                 land.coords.x,
                 land.coords.y,
                 invalid_texture_indices,
