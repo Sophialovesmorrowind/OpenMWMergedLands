@@ -259,6 +259,20 @@ pub fn meta_name(name: &str) -> String {
     format!("{file_name_without_extension}.mergedlands.toml")
 }
 
+fn plugin_file_name(plugin_name: &str) -> &str {
+    plugin_name
+        .rsplit(|ch| ['/', '\\'].contains(&ch))
+        .next()
+        .unwrap_or(plugin_name)
+}
+
+fn is_generated_output_plugin(plugin_name: &str, generated_output_names: &[String]) -> bool {
+    let plugin_name = plugin_file_name(plugin_name);
+    generated_output_names
+        .iter()
+        .any(|output_name| plugin_name.eq_ignore_ascii_case(output_name))
+}
+
 // -------------------------------------------------------------------------------------------------
 // ParsedPlugin / ParsedPlugins
 // -------------------------------------------------------------------------------------------------
@@ -433,6 +447,7 @@ impl ParsedPlugins {
         data_dirs: &DataDirs,
         source: PluginListSource,
         sort_order: SortOrder,
+        generated_output_names: &[String],
         is_openmw_mode: bool,
     ) -> Result<Self> {
         for dir in data_dirs.iter() {
@@ -470,6 +485,14 @@ impl ParsedPlugins {
                 plugin_names
             }
         };
+
+        all_plugins.retain(|plugin_name| {
+            let should_keep = !is_generated_output_plugin(plugin_name, generated_output_names);
+            if !should_keep {
+                debug!("Skipping generated output plugin {plugin_name}");
+            }
+            should_keep
+        });
 
         sort_plugins(data_dirs, &mut all_plugins, sort_order)
             .with_context(|| anyhow!("Unknown load order for plugins"))?;
@@ -620,7 +643,10 @@ impl ParsedPlugins {
 
 #[cfg(test)]
 mod tests {
-    use super::{DataDirs, is_esm, meta_name, sort_plugins};
+    use super::{
+        DataDirs, ParsedPlugins, PluginListSource, is_esm, is_generated_output_plugin, meta_name,
+        sort_plugins,
+    };
     use crate::cli::SortOrder;
     use std::fs;
     use std::path::Path;
@@ -659,6 +685,43 @@ mod tests {
             meta_name("Data Files/Plugin.esp"),
             "Plugin.mergedlands.toml"
         );
+    }
+
+    #[test]
+    fn generated_output_matcher_uses_file_name_case_insensitively() {
+        let generated_outputs = vec!["Merged Lands.omwaddon".to_string()];
+
+        assert!(is_generated_output_plugin(
+            "Merged Lands.omwaddon",
+            &generated_outputs
+        ));
+        assert!(is_generated_output_plugin(
+            "Data Files/merged lands.OMWADDON",
+            &generated_outputs
+        ));
+        assert!(!is_generated_output_plugin(
+            "Actually Merged Lands.omwaddon Patch.esp",
+            &generated_outputs
+        ));
+    }
+
+    #[test]
+    fn generated_output_plugins_are_filtered_before_resolution() {
+        let data_dir = create_temp_data_dir();
+        let generated_outputs = vec!["Merged Lands.omwaddon".to_string()];
+
+        let parsed = ParsedPlugins::new(
+            &DataDirs::single(data_dir.clone()),
+            PluginListSource::Explicit(vec!["Merged Lands.omwaddon".to_string()]),
+            SortOrder::Default,
+            &generated_outputs,
+            true,
+        )
+        .expect("generated output should be skipped before file resolution");
+
+        assert!(parsed.masters.is_empty());
+        assert!(parsed.plugins.is_empty());
+        fs::remove_dir_all(data_dir).expect("cleanup temp dir");
     }
 
     #[test]

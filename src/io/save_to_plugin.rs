@@ -12,6 +12,7 @@ use anyhow::{Context, Result, anyhow};
 use log::{debug, trace, warn};
 use std::collections::HashSet;
 use std::fs;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -143,6 +144,15 @@ fn to_master_record(data_dirs: &DataDirs, name: String) -> (String, u64) {
     (name, file_size)
 }
 
+fn remove_file_if_exists(path: &Path) -> Result<()> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error)
+            .with_context(|| anyhow!("Unable to remove old file {}", path.to_string_lossy())),
+    }
+}
+
 /// Saves the [Landmass] with [`KnownTextures`].
 pub fn save_plugin(
     data_dirs: &DataDirs,
@@ -244,12 +254,14 @@ pub fn save_plugin(
     });
 
     trace!("Saving meta file {meta_name}");
+    remove_file_if_exists(&merged_meta)?;
     fs::write(merged_meta, toml::to_string(&meta).expect("safe"))
         .with_context(|| anyhow!("Unable to save plugin meta {meta_name}"))?;
 
     let merged_filepath: PathBuf = [output_file_dir, Path::new(output_name)].iter().collect();
 
     trace!("Saving file {output_name}");
+    remove_file_if_exists(&merged_filepath)?;
     plugin
         .save_path(&merged_filepath)
         .with_context(|| anyhow!("Unable to save plugin {output_name}"))?;

@@ -38,6 +38,10 @@ mod merge;
 mod repair;
 mod term_style;
 
+const OPENMW_LOGO_ASCII: &str = include_str!("../assets/openmw-logo-ascii.txt");
+const DEFAULT_OPENMW_OUTPUT_FILE: &str = "Merged Lands.omwaddon";
+const DEFAULT_VANILLA_OUTPUT_FILE: &str = "Merged Lands.esp";
+
 /// A [Landmass] represents a collection of [Landscape] and the associated [`ParsedPlugin`].
 pub struct Landmass {
     plugin: Arc<ParsedPlugin>,
@@ -260,9 +264,9 @@ mod cli {
             self.output_file
                 .as_deref()
                 .unwrap_or(if self.is_openmw_mode() {
-                    "Merged Lands.omwaddon"
+                    super::DEFAULT_OPENMW_OUTPUT_FILE
                 } else {
-                    "Merged Lands.esp"
+                    super::DEFAULT_VANILLA_OUTPUT_FILE
                 })
         }
 
@@ -375,6 +379,7 @@ fn main() {
     let wait_for_exit = cli.wait_for_exit;
 
     init_log(&cli);
+    print_startup_banner();
 
     if let Err(e) = run_merge_on_worker_thread(cli) {
         error!(
@@ -390,6 +395,27 @@ fn main() {
     }
 
     wait_for_user_exit(wait_for_exit);
+}
+
+fn print_startup_banner() {
+    println!("{}", OPENMW_LOGO_ASCII.trim_end());
+}
+
+fn generated_output_file_names(cli: &Cli) -> Vec<String> {
+    let mut names = vec![
+        DEFAULT_OPENMW_OUTPUT_FILE.to_string(),
+        DEFAULT_VANILLA_OUTPUT_FILE.to_string(),
+    ];
+    let output_file_name = cli.output_file_name();
+
+    if !names
+        .iter()
+        .any(|name| name.eq_ignore_ascii_case(output_file_name))
+    {
+        names.push(output_file_name.to_string());
+    }
+
+    names
 }
 
 fn wait_for_user_exit(wait_for_exit: bool) {
@@ -482,10 +508,12 @@ fn merge_all(cli: &Cli) -> Result<()> {
         };
 
     let is_openmw_mode = cli.is_openmw_mode();
+    let generated_output_names = generated_output_file_names(cli);
     let parsed_plugins = ParsedPlugins::new(
         &data_dirs,
         plugin_source,
         effective_sort_order,
+        &generated_output_names,
         is_openmw_mode,
     )?;
     debug!("Parsed plugins in {:?}", phase_start.elapsed());
