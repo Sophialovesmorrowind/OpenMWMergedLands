@@ -1679,6 +1679,36 @@ mod tests {
     }
 
     #[test]
+    fn cleanup_keeps_new_cell_output_needed_to_override_excluded_height() {
+        run_with_large_stack(|| {
+            let coords = (0, 0);
+            let excluded_height = PluginMeta {
+                height_map: MergeSettings {
+                    included: false,
+                    ..MergeSettings::default()
+                },
+                ..PluginMeta::default()
+            };
+            let plugin = parsed_plugin_with_land(
+                "Patch.esp",
+                fixture_land_with_vertex_color(coords, 20, Vec3::new(1, 2, 3)),
+                excluded_height,
+            );
+
+            let (mut merged_lands, raw_load_order_landmass) = merge_test_plugins(vec![plugin]);
+            let coords = crate::Vec2::new(coords.0, coords.1);
+            assert!(merged_lands.land.contains_key(&coords));
+
+            clean_landmass_diff(&mut merged_lands, &raw_load_order_landmass);
+
+            assert!(
+                merged_lands.land.contains_key(&coords),
+                "output LAND is needed because saving the included color also materializes a default height that overrides the excluded loaded height"
+            );
+        });
+    }
+
+    #[test]
     fn e2e_single_plugin_writes_meta_and_header() {
         let root = unique_temp_dir("e2e_single_plugin");
         let data_files = root.join("Data Files");

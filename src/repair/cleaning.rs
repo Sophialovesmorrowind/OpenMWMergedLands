@@ -5,7 +5,7 @@ use crate::land::height_map::try_calculate_height_map;
 use crate::land::landscape_diff::LandscapeDiff;
 use crate::land::terrain_map::TerrainMap;
 use crate::land::textures::{KnownTextures, RemappedTextures};
-use crate::merge::relative_terrain_map::RelativeTerrainMap;
+use crate::merge::relative_terrain_map::{DefaultRelativeTerrainMap, RelativeTerrainMap};
 use crate::merge::relative_to::RelativeTo;
 use crate::repair::seam_detection::repair_landmass_seams;
 use crate::{Landmass, LandmassDiff};
@@ -58,6 +58,14 @@ fn differs_from_landscape<U: RelativeTo, const T: usize>(
     false
 }
 
+fn differs_required_field_from_landscape<U: RelativeTo, const T: usize>(
+    merged: Option<&RelativeTerrainMap<U, T>>,
+    default: &RelativeTerrainMap<U, T>,
+    loaded: Option<&TerrainMap<U, T>>,
+) -> bool {
+    differs_from_landscape(Some(merged.unwrap_or(default)), loaded)
+}
+
 fn has_any_difference_from_loaded_landscape(
     merged: &LandscapeDiff,
     loaded: Option<&Landscape>,
@@ -68,9 +76,15 @@ fn has_any_difference_from_loaded_landscape(
     let vertex_colors = loaded.and_then(vertex_colors);
     let texture_indices = loaded.and_then(texture_indices);
 
-    differs_from_landscape(merged.height_map.as_ref(), height_map.as_ref())
-        || differs_from_landscape(merged.vertex_normals.as_ref(), vertex_normals.as_ref())
-        || differs_from_landscape(merged.world_map_data.as_ref(), world_map_data.as_ref())
+    differs_required_field_from_landscape(
+        merged.height_map.as_ref(),
+        &DefaultRelativeTerrainMap::HEIGHT_MAP,
+        height_map.as_ref(),
+    ) || differs_required_field_from_landscape(
+        merged.vertex_normals.as_ref(),
+        &DefaultRelativeTerrainMap::VERTEX_NORMALS,
+        vertex_normals.as_ref(),
+    ) || differs_from_landscape(merged.world_map_data.as_ref(), world_map_data.as_ref())
         || differs_from_landscape(merged.vertex_colors.as_ref(), vertex_colors.as_ref())
         || differs_from_landscape(merged.texture_indices.as_ref(), texture_indices.as_ref())
 }
