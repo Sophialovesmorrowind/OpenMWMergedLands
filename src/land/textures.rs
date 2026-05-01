@@ -124,6 +124,20 @@ impl RemappedTextures {
             self.inner.get(&index).copied()
         }
     }
+
+    /// Returns a real remapped texture index for invalid LAND texture references.
+    ///
+    /// `VTEX` index 0 is the default/no-texture slot, while `LTEX` index 0 is stored in LAND as
+    /// `VTEX` index 1. Prefer the first real texture so invalid indices do not render as black
+    /// default-texture squares.
+    pub fn fallback_texture_index(&self) -> IndexVTEX {
+        self.inner
+            .values()
+            .copied()
+            .filter(|idx| *idx != IndexVTEX::default())
+            .min()
+            .unwrap_or_default()
+    }
 }
 
 /// A [`LandscapeTexture`] and the [`ParsedPlugin`] that last added or modified it.

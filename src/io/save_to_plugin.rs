@@ -5,7 +5,7 @@ use crate::land::conversions::convert_terrain_map;
 use crate::land::height_map::calculate_vertex_heights_tes3;
 use crate::land::landscape_diff::LandscapeDiff;
 use crate::land::terrain_map::Vec3;
-use crate::land::textures::{IndexVTEX, KnownTextures, RemappedTextures};
+use crate::land::textures::{KnownTextures, RemappedTextures};
 use crate::merge::relative_terrain_map::{DefaultRelativeTerrainMap, recompute_vertex_normals};
 use crate::{Landmass, LandmassDiff};
 use anyhow::{Context, Result, anyhow};
@@ -42,10 +42,8 @@ fn convert_landscape_diff_to_landscape(
 
     new_landscape.flags = landscape.flags;
     new_landscape.grid = (landscape.coords.x, landscape.coords.y);
-    new_landscape.landscape_flags = LandscapeFlags::USES_VERTEX_HEIGHTS_AND_NORMALS
-        | LandscapeFlags::USES_VERTEX_COLORS
-        | LandscapeFlags::USES_TEXTURES
-        | LandscapeFlags::UNKNOWN;
+    new_landscape.landscape_flags =
+        LandscapeFlags::USES_VERTEX_HEIGHTS_AND_NORMALS | LandscapeFlags::UNKNOWN;
 
     let height_map = landscape
         .height_map
@@ -66,13 +64,16 @@ fn convert_landscape_diff_to_landscape(
     });
 
     if let Some(vertex_colors) = landscape.vertex_colors.as_ref() {
+        new_landscape.landscape_flags |= LandscapeFlags::USES_VERTEX_COLORS;
         new_landscape.vertex_colors = Some(VertexColors {
             data: Box::new(convert_terrain_map(&vertex_colors.to_terrain(), Vec3::into)),
         });
     }
 
     if let Some(texture_indices) = landscape.texture_indices.as_ref() {
+        new_landscape.landscape_flags |= LandscapeFlags::USES_TEXTURES;
         let mut texture_indices = texture_indices.to_terrain();
+        let fallback_texture_index = remapped_textures.fallback_texture_index();
         let mut invalid_texture_indices = 0usize;
         let mut first_invalid_texture_index = None;
 
@@ -82,18 +83,19 @@ fn convert_landscape_diff_to_landscape(
             } else {
                 invalid_texture_indices += 1;
                 first_invalid_texture_index.get_or_insert(idx.as_u16());
-                *idx = IndexVTEX::default();
+                *idx = fallback_texture_index;
             }
         }
 
         if invalid_texture_indices > 0 {
             warn!(
-                "({:>4}, {:>4}) | Replaced {} invalid texture indices while converting LAND for output (first VTEX index = {})",
+                "({:>4}, {:>4}) | Replaced {} invalid texture indices while converting LAND for output (first VTEX index = {}) with fallback VTEX index {}",
                 landscape.coords.x,
                 landscape.coords.y,
                 invalid_texture_indices,
                 first_invalid_texture_index
-                    .expect("invalid index count implies first invalid index")
+                    .expect("invalid index count implies first invalid index"),
+                fallback_texture_index.as_u16()
             );
         }
 
@@ -408,17 +410,17 @@ mod tests {
     }
 
     #[test]
-    fn convert_landscape_diff_remaps_invalid_texture_to_default() {
+    fn convert_landscape_diff_remaps_invalid_texture_to_fallback_texture() {
         let plugin = plugin("plugin.esp");
-        let landscape = landscape_diff_with_texture(plugin, Vec2::new(0, 0), 1);
-        let remapped = RemappedTextures::from(&[true]);
+        let landscape = landscape_diff_with_texture(plugin, Vec2::new(0, 0), 2);
+        let remapped = RemappedTextures::from(&[true, true]);
 
         let converted = convert_landscape_diff_to_landscape(&landscape, &remapped);
         let indices = converted
             .texture_indices
             .expect("texture indices should be present");
 
-        assert_eq!(indices.data[1][1], 0);
+        assert_eq!(indices.data[1][1], 1);
         assert!(converted.vertex_heights.is_some());
         assert!(converted.vertex_normals.is_some());
         assert!(
@@ -426,6 +428,25 @@ mod tests {
                 .landscape_flags
                 .contains(LandscapeFlags::USES_VERTEX_HEIGHTS_AND_NORMALS)
         );
+    }
+
+    #[test]
+    fn convert_landscape_diff_keeps_unmodified_texture_indices_for_whole_land_override() {
+        let plugin = plugin("plugin.esp");
+        let landscape = landscape_diff_with_texture(plugin, Vec2::new(0, 0), 0);
+        let remapped = RemappedTextures::from(&[true, true]);
+
+        let converted = convert_landscape_diff_to_landscape(&landscape, &remapped);
+        let indices = converted
+            .texture_indices
+            .expect("texture indices should be present");
+
+        assert!(
+            converted
+                .landscape_flags
+                .contains(LandscapeFlags::USES_TEXTURES)
+        );
+        assert!(indices.data.iter().flatten().all(|idx| *idx == 0));
     }
 
     #[test]

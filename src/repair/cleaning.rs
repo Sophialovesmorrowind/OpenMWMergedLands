@@ -178,7 +178,7 @@ pub fn clean_known_textures(
 
         if invalid_texture_indices > 0 {
             warn!(
-                "({:>4}, {:>4}) | {} invalid texture indices in merged LAND (first VTEX index = {}) will be replaced with the default texture",
+                "({:>4}, {:>4}) | {} invalid texture indices in merged LAND (first VTEX index = {}) will be replaced with a fallback texture",
                 land.coords.x,
                 land.coords.y,
                 invalid_texture_indices,

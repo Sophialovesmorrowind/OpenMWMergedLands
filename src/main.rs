@@ -738,6 +738,7 @@ fn try_copy_landscape_and_remap_textures(
         let coords = coordinates(land);
 
         if let Some(texture_indices) = updated_land.texture_indices.as_mut() {
+            let fallback_texture_index = remapped_textures.fallback_texture_index();
             let mut invalid_texture_indices = 0usize;
             let mut first_invalid_texture_index = None;
 
@@ -748,19 +749,20 @@ fn try_copy_landscape_and_remap_textures(
                 } else {
                     invalid_texture_indices += 1;
                     first_invalid_texture_index.get_or_insert(original_index.as_u16());
-                    *idx = IndexVTEX::default().as_u16();
+                    *idx = fallback_texture_index.as_u16();
                 }
             }
 
             if invalid_texture_indices > 0 {
                 warn!(
-                    "({:>4}, {:>4}) | {:<50} | Replaced {} invalid source texture indices (first VTEX index = {}) with the default texture",
+                    "({:>4}, {:>4}) | {:<50} | Replaced {} invalid source texture indices (first VTEX index = {}) with fallback VTEX index {}",
                     coords.x,
                     coords.y,
                     plugin.name,
                     invalid_texture_indices,
                     first_invalid_texture_index
-                        .expect("invalid index count implies first invalid index")
+                        .expect("invalid index count implies first invalid index"),
+                    fallback_texture_index.as_u16()
                 );
             }
         }
