@@ -184,7 +184,7 @@ These files are used to control the tool's behavior.
 
 ### Example 1. `Cantons_on_the_Global_Map_v1.1.mergedlands.toml`
 
-This patch file would instruct the tool to ignore all changes made by the mod except for those related to `world_map_data`.
+This patch file would instruct the tool to exclude all changes made by the mod except for those related to `world_map_data`.
 Then, for those changes only, the mod would resolve any conflicts with other mods by using the changes from `Cantons on the Global Map` instead.
 
 ```toml
@@ -244,5 +244,6 @@ conflict_strategy = "Ignore"
 
 ### Defaults
 
-Each type of `LAND` record is `included = true` and `conflict_strategy = "Auto"` by default. `"Auto"` allows the tool to determine an "optimal" way to resolve conflicts -- whether that means merging, overwriting, or even ignoring the conflict.
+Each type of `LAND` record is `included = true` and `conflict_strategy = "Auto"` by default. `"Auto"` preserves load-order winner semantics: later plugins win for the LAND entries they actually changed. Use `"Resolve"` only when you explicitly want the tool to synthesize blended numeric values instead of following load order.
+Setting `included = false` excludes that data from the merged output and from the rolling reference used for later plugins.
 You should not write a `.mergedlands.toml` file until it is known to be necessary.

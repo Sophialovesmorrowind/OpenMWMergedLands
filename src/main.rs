@@ -1632,6 +1632,53 @@ mod tests {
     }
 
     #[test]
+    fn cleanup_keeps_reference_output_needed_to_override_excluded_later_data() {
+        run_with_large_stack(|| {
+            let coords = (0, 0);
+            let master = parsed_plugin_with_land(
+                "Master.esm",
+                fixture_land(coords, 10, None),
+                PluginMeta::default(),
+            );
+            let excluded_height = PluginMeta {
+                height_map: MergeSettings {
+                    included: false,
+                    ..MergeSettings::default()
+                },
+                ..PluginMeta::default()
+            };
+            let plugin = parsed_plugin_with_land(
+                "Patch.esp",
+                fixture_land(coords, 20, None),
+                excluded_height,
+            );
+
+            let parsed_plugins = ParsedPlugins {
+                masters: vec![master],
+                plugins: vec![plugin],
+            };
+            let mut known_textures = crate::land::textures::KnownTextures::new();
+            let (reference_landmass, modded_landmasses, raw_load_order_landmass) =
+                create_reference_and_modded_landmasses(&parsed_plugins, &mut known_textures);
+            let mut merged_lands = create_merged_lands_from_reference(&reference_landmass);
+
+            for modded_landmass in &modded_landmasses {
+                merge_landmass_into(&mut merged_lands, modded_landmass);
+            }
+
+            let coords = crate::Vec2::new(coords.0, coords.1);
+            assert!(merged_lands.land.contains_key(&coords));
+
+            clean_landmass_diff(&mut merged_lands, &raw_load_order_landmass);
+
+            assert!(
+                merged_lands.land.contains_key(&coords),
+                "reference-equivalent output LAND is still needed when excluded later data would otherwise win"
+            );
+        });
+    }
+
+    #[test]
     fn e2e_single_plugin_writes_meta_and_header() {
         let root = unique_temp_dir("e2e_single_plugin");
         let data_files = root.join("Data Files");

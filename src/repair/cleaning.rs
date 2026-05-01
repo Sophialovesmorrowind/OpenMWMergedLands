@@ -87,23 +87,14 @@ pub fn clean_landmass_diff(landmass: &mut LandmassDiff, loaded_landmass: &Landma
     assert_eq!(repair_landmass_seams(landmass), 0);
 
     let mut unmodified = Vec::new();
-    let mut num_unmodified_from_reference = 0;
     let mut num_unmodified_from_loaded_landscape = 0;
 
     for (coords, land) in &mut landmass.land {
-        if !land.is_modified() {
-            unmodified.push(*coords);
-            num_unmodified_from_reference += 1;
-            continue;
-        }
-
         if !has_any_difference_from_loaded_landscape(land, loaded_landmass.land.get(coords)) {
             unmodified.push(*coords);
             num_unmodified_from_loaded_landscape += 1;
         }
     }
-
-    debug!("Removing {num_unmodified_from_reference} LAND records unmodified from reference");
 
     debug!(
         "Removing {num_unmodified_from_loaded_landscape} LAND records unmodified from loaded landscape"
