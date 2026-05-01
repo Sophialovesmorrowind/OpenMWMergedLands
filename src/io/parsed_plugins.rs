@@ -11,7 +11,7 @@ use std::hash::{Hash, Hasher};
 use std::io::{BufRead, BufReader, Lines};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tes3::esp::{Cell, Header, Landscape, LandscapeTexture, Plugin, TES3Object};
+use tes3::esp::{Header, Landscape, LandscapeTexture, Plugin};
 
 // -------------------------------------------------------------------------------------------------
 // DataDirs
@@ -191,17 +191,9 @@ fn parse_records(data_dirs: &DataDirs, plugin_name: &str) -> Result<Plugin> {
     let mut plugin = Plugin::new();
     plugin
         .load_path_filtered(file_path, |tag| {
-            matches!(
-                &tag,
-                Header::TAG | LandscapeTexture::TAG | Landscape::TAG | Cell::TAG
-            )
+            matches!(&tag, Header::TAG | LandscapeTexture::TAG | Landscape::TAG)
         })
         .with_context(|| anyhow!("Failed to load records from plugin {plugin_name}"))?;
-
-    plugin.objects.retain(|object| match object {
-        TES3Object::Cell(cell) => cell.is_exterior(),
-        _ => true,
-    });
 
     Ok(plugin)
 }

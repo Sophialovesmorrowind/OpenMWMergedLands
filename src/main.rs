@@ -10,7 +10,6 @@ use crate::land::grid_access::{GridAccessor2D, SquareGridIterator};
 use crate::land::landscape_diff::LandscapeDiff;
 use crate::land::terrain_map::{LandData, Vec2};
 use crate::land::textures::{IndexVTEX, KnownTextures, RemappedTextures};
-use crate::merge::cells::merge_cells;
 use crate::merge::merge_strategy::apply_merge_strategy;
 use crate::merge::relative_terrain_map::{IsModified, RelativeTerrainMap};
 use crate::repair::cleaning::{clean_known_textures, clean_landmass_diff};
@@ -199,10 +198,6 @@ mod cli {
         #[arg(long, default_value_t = 8)]
         /// The size of the application's stack in MB.
         stack_size_mb: u8,
-
-        #[arg(long)]
-        /// The application will remove all CELL records when this flag is provided.
-        pub remove_cell_records: bool,
 
         #[arg(long)]
         /// The application will color the LAND vertex colors to show conflicts.
@@ -619,8 +614,6 @@ fn merge_all(cli: &Cli) -> Result<()> {
     //  - [IMPLEMENTATION NOTE] Reuse last modified date if the ESP already exists.
     info!(":: Saving ::");
 
-    let cells = merge_cells(&parsed_plugins);
-
     // Output path precedence:
     //  1. `--output-file-dir`
     //  2. `merged_lands.toml` in `merged_lands_dir`
@@ -642,7 +635,6 @@ fn merge_all(cli: &Cli) -> Result<()> {
     };
 
     let file_name = cli.output_file_name();
-    let include_cell_records = !cli.remove_cell_records;
     save_plugin(
         &data_dirs,
         &output_file_dir,
@@ -650,7 +642,6 @@ fn merge_all(cli: &Cli) -> Result<()> {
         cli.sort_order,
         &landmass,
         &known_textures,
-        include_cell_records.then_some(&cells),
     )?;
     debug!("Saved plugin and metadata in {:?}", phase_start.elapsed());
 
@@ -1184,7 +1175,7 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
     use tes3::esp::{
-        Cell, Header, Landscape, LandscapeFlags, LandscapeTexture, ObjectFlags, Plugin, TES3Object,
+        Header, Landscape, LandscapeFlags, LandscapeTexture, ObjectFlags, Plugin, TES3Object,
         TextureIndices, VertexNormals,
     };
 
@@ -1207,7 +1198,6 @@ mod tests {
         path: &Path,
         plugin_name: &str,
         lands: Vec<Landscape>,
-        cells: Vec<Cell>,
         textures: Vec<LandscapeTexture>,
         masters: Vec<(String, u64)>,
     ) {
@@ -1222,10 +1212,6 @@ mod tests {
 
         for texture in textures {
             plugin.objects.push(TES3Object::LandscapeTexture(texture));
-        }
-
-        for cell in cells {
-            plugin.objects.push(TES3Object::Cell(cell));
         }
 
         for land in lands {
@@ -1281,13 +1267,6 @@ mod tests {
         land
     }
 
-    fn fixture_cell(coords: (i32, i32), id: &str) -> Cell {
-        let mut cell = Cell::default();
-        cell.data.grid = coords;
-        cell.id = id.to_string();
-        cell
-    }
-
     fn fixture_ltex(id: &str, index: u32, file_name: &str) -> LandscapeTexture {
         LandscapeTexture {
             id: id.to_string(),
@@ -1300,7 +1279,6 @@ mod tests {
     fn run_vanilla_merge(
         test_name: &str,
         plugin_names: &[&str],
-        remove_cell_records: bool,
         output_file_name: &str,
     ) -> (PathBuf, PathBuf) {
         let root = unique_temp_dir(test_name);
@@ -1327,10 +1305,6 @@ mod tests {
             "none".to_string(),
         ];
 
-        if remove_cell_records {
-            args.push("--remove-cell-records".to_string());
-        }
-
         for plugin in plugin_names {
             args.push((*plugin).to_string());
         }
@@ -1344,7 +1318,6 @@ mod tests {
     fn run_openmw_merge(
         test_name: &str,
         plugin_names: &[&str],
-        remove_cell_records: bool,
         output_file_name: &str,
     ) -> (PathBuf, PathBuf) {
         let root = unique_temp_dir(test_name);
@@ -1369,7 +1342,7 @@ mod tests {
         }
         fs::write(&openmw_cfg, cfg).expect("write openmw.cfg");
 
-        let mut args = vec![
+        let args = vec![
             "merged_lands".to_string(),
             "--openmw-cfg".to_string(),
             openmw_cfg.to_string_lossy().to_string(),
@@ -1382,10 +1355,6 @@ mod tests {
             "--sort-order".to_string(),
             "none".to_string(),
         ];
-
-        if remove_cell_records {
-            args.push("--remove-cell-records".to_string());
-        }
 
         let cli = crate::cli::Cli::try_parse_from(args).expect("parse cli args");
         run_merge_on_worker_thread(cli).expect("merge_all should succeed");
@@ -1464,17 +1433,12 @@ mod tests {
             &data_files.join(plugin_name),
             plugin_name,
             vec![fixture_land((0, 0), 24, None)],
-            vec![fixture_cell((0, 0), "Cell 0")],
             vec![],
             vec![],
         );
 
-        let (_root, output_dir) = run_vanilla_merge(
-            "e2e_single_plugin_run",
-            &[plugin_name],
-            false,
-            "MergedTest.esp",
-        );
+        let (_root, output_dir) =
+            run_vanilla_merge("e2e_single_plugin_run", &[plugin_name], "MergedTest.esp");
         let merged_path = output_dir.join("MergedTest.esp");
         let merged = load_output_plugin(&merged_path);
         assert!(matches!(
@@ -1490,7 +1454,7 @@ mod tests {
     }
 
     #[test]
-    fn e2e_remove_cell_records_flag_keeps_output_cell_free_when_cleaned() {
+    fn e2e_output_is_cell_free_when_cleaned() {
         let root = unique_temp_dir("e2e_cell_toggle");
         let data_files = root.join("Data Files");
         fs::create_dir_all(&data_files).expect("create Data Files");
@@ -1501,7 +1465,6 @@ mod tests {
             &data_files.join(plugin_a),
             plugin_a,
             vec![fixture_land((1, 1), 32, None)],
-            vec![fixture_cell((1, 1), "Cell 1")],
             vec![],
             vec![],
         );
@@ -1510,24 +1473,19 @@ mod tests {
             &data_files.join(plugin_b),
             plugin_b,
             vec![fixture_land((1, 1), 96, None)],
-            vec![fixture_cell((1, 1), "Cell 1")],
             vec![],
             vec![],
         );
 
-        let (_root_with_cells, output_with_cells) = run_openmw_merge(
-            "e2e_cells_on",
-            &[plugin_a, plugin_b],
-            false,
-            "WithCells.esp",
-        );
+        let (_root_with_cells, output_with_cells) =
+            run_openmw_merge("e2e_cells_on", &[plugin_a, plugin_b], "WithCells.esp");
         let with_cells = load_output_plugin(&output_with_cells.join("WithCells.esp"));
         let (_, with_cell_count, with_land_count) = count_objects(&with_cells);
         assert_eq!(with_cell_count, 0);
         assert_eq!(with_land_count, 0);
 
         let (_root_no_cells, output_no_cells) =
-            run_openmw_merge("e2e_cells_off", &[plugin_a, plugin_b], true, "NoCells.esp");
+            run_openmw_merge("e2e_cells_off", &[plugin_a, plugin_b], "NoCells.esp");
         let no_cells = load_output_plugin(&output_no_cells.join("NoCells.esp"));
         let (_, no_cell_count, no_land_count) = count_objects(&no_cells);
         assert_eq!(no_cell_count, 0);
@@ -1545,7 +1503,6 @@ mod tests {
             &data_files.join(plugin_name),
             plugin_name,
             vec![fixture_land((2, 2), 48, Some(1))],
-            vec![fixture_cell((2, 2), "Cell 2")],
             vec![
                 fixture_ltex("used", 1, "used.dds"),
                 fixture_ltex("unused", 2, "unused.dds"),
@@ -1557,7 +1514,6 @@ mod tests {
             &data_files.join("TexturesPatch.esp"),
             "TexturesPatch.esp",
             vec![fixture_land((2, 2), 96, Some(1))],
-            vec![fixture_cell((2, 2), "Cell 2")],
             vec![],
             vec![],
         );
@@ -1565,7 +1521,6 @@ mod tests {
         let (_root_run, output_dir) = run_openmw_merge(
             "e2e_ltex_prune_run",
             &[plugin_name, "TexturesPatch.esp"],
-            false,
             "LtexOut.esp",
         );
         let merged = load_output_plugin(&output_dir.join("LtexOut.esp"));
@@ -1594,7 +1549,6 @@ mod tests {
             &data_files.join("A.esp"),
             "A.esp",
             vec![fixture_land((10, 10), 16, None)],
-            vec![fixture_cell((10, 10), "A Cell")],
             vec![],
             vec![],
         );
@@ -1603,7 +1557,6 @@ mod tests {
             &data_files.join("B.esp"),
             "B.esp",
             vec![fixture_land((10, 10), 64, None)],
-            vec![fixture_cell((10, 10), "B Cell")],
             vec![],
             vec![],
         );
@@ -1611,7 +1564,6 @@ mod tests {
         let (_root_run, output_dir) = run_openmw_merge(
             "e2e_overlapping_cleaned_run",
             &["A.esp", "B.esp"],
-            false,
             "Both.esp",
         );
         let merged = load_output_plugin(&output_dir.join("Both.esp"));
