@@ -22,22 +22,9 @@ impl MergeStrategy for IgnoreStrategy {
         let mut new = lhs.clone();
 
         for coords in new.iter_grid() {
-            let lhs_diff = lhs.has_difference(coords);
-            let rhs_diff = rhs.has_difference(coords);
-
-            let mut diff = Default::default();
-            if lhs_diff && !rhs_diff {
-                diff = lhs.get_difference(coords);
-            } else if !lhs_diff && rhs_diff {
-                diff = rhs.get_difference(coords);
-            } else if !lhs_diff && !rhs_diff {
-                // NOP.
-            } else {
-                // Conflict -- choose lhs.
-                diff = lhs.get_difference(coords);
+            if !lhs.has_difference(coords) && rhs.has_difference(coords) {
+                new.set_value(coords, rhs.get_value(coords));
             }
-
-            new.set_difference(coords, diff);
         }
 
         new

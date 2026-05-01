@@ -99,12 +99,6 @@ impl<U: RelativeTo, const T: usize> RelativeTerrainMap<U, T> {
         delta
     }
 
-    /// Set the difference at `coords`.
-    pub fn set_difference(&mut self, coords: Index2D, difference: <U as RelativeTo>::Delta) {
-        *self.relative.get_mut(coords) = difference;
-        *self.has_difference.get_mut(coords) = difference != <U as RelativeTo>::Delta::default();
-    }
-
     /// Returns `true` if there is a difference at `coords` with respect to the reference.
     pub fn has_difference(&self, coords: Index2D) -> bool {
         if self.has_difference.get(coords) {
