@@ -4,12 +4,14 @@ use crate::term_style::{bold, bold_red, yellow};
 use anyhow::{Context, Result, anyhow, bail};
 use log::{debug, error, info, trace, warn};
 use openmw_config::{OpenMWConfiguration, default_data_local_path};
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::ffi::OsStr;
 use std::fs;
 use std::fs::File;
 use std::hash::{Hash, Hasher};
 use std::io::{BufRead, BufReader, Lines};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use tes3::esp::{Header, Landscape, LandscapeTexture, Plugin};
 
@@ -28,12 +30,18 @@ use tes3::esp::{Header, Landscape, LandscapeTexture, Plugin};
 #[derive(Debug, Clone)]
 pub struct DataDirs {
     dirs: Vec<PathBuf>,
+    resolve_cache: RefCell<HashMap<String, Option<PathBuf>>>,
+    case_cache: RefCell<HashMap<PathBuf, HashMap<String, PathBuf>>>,
 }
 
 impl DataDirs {
     /// Creates a [`DataDirs`] containing a single directory (classic Morrowind layout).
     pub fn single(dir: PathBuf) -> Self {
-        Self { dirs: vec![dir] }
+        Self {
+            dirs: vec![resolve_existing_dir_case_insensitive(&dir).unwrap_or(dir)],
+            resolve_cache: RefCell::default(),
+            case_cache: RefCell::default(),
+        }
     }
 
     /// Creates a [`DataDirs`] from an ordered list. The first entry is the lowest priority,
@@ -42,7 +50,15 @@ impl DataDirs {
         if dirs.is_empty() {
             bail!("DataDirs must contain at least one directory");
         }
-        Ok(Self { dirs })
+        let dirs = dirs
+            .into_iter()
+            .map(|dir| resolve_existing_dir_case_insensitive(&dir).unwrap_or(dir))
+            .collect();
+        Ok(Self {
+            dirs,
+            resolve_cache: RefCell::default(),
+            case_cache: RefCell::default(),
+        })
     }
 
     /// The highest-priority data directory. This is used for last-wins data resolution and as the
@@ -54,17 +70,39 @@ impl DataDirs {
             .as_path()
     }
 
-    /// Searches for `name` in every data directory, highest priority first. Returns the resolved
-    /// filesystem path if the file exists, else [`None`].
-    ///
-    /// Note: matching is case-sensitive on case-sensitive filesystems (i.e., Linux) because
-    /// [`Path::is_file`] is case-sensitive there. On Windows and case-insensitive macOS
-    /// filesystems the underlying OS resolves the cases for us.
+    /// Searches for `name` in every data directory, highest priority first. Matching is
+    /// case-insensitive for every path component, matching OpenMW's VFS behavior.
     pub fn resolve(&self, name: &str) -> Option<PathBuf> {
+        let cache_key = name.to_ascii_lowercase();
+
+        {
+            let resolve_cache = self.resolve_cache.borrow();
+            if let Some(cached) = resolve_cache.get(&cache_key) {
+                return cached.clone();
+            }
+        }
+
+        let resolved = self.resolve_uncached(name);
+        self.resolve_cache
+            .borrow_mut()
+            .insert(cache_key, resolved.clone());
+        resolved
+    }
+
+    fn resolve_uncached(&self, name: &str) -> Option<PathBuf> {
         for dir in self.dirs.iter().rev() {
             let candidate: PathBuf = [dir.as_path(), Path::new(name)].iter().collect();
             if candidate.is_file() {
                 return Some(candidate);
+            }
+        }
+
+        for dir in self.dirs.iter().rev() {
+            let candidate: PathBuf = [dir.as_path(), Path::new(name)].iter().collect();
+            if let Some(resolved) = self.resolve_existing_path_case_insensitive(&candidate)
+                && resolved.is_file()
+            {
+                return Some(resolved);
             }
         }
         None
@@ -74,6 +112,116 @@ impl DataDirs {
     pub fn iter(&self) -> impl Iterator<Item = &Path> {
         self.dirs.iter().map(std::path::PathBuf::as_path)
     }
+
+    fn find_child_case_insensitive(&self, parent: &Path, name: &OsStr) -> Option<PathBuf> {
+        let key = os_str_case_key(name);
+
+        {
+            let case_cache = self.case_cache.borrow();
+            if let Some(entries) = case_cache.get(parent) {
+                return entries.get(&key).cloned();
+            }
+        }
+
+        let entries = read_dir_case_map(parent)?;
+        let found = entries.get(&key).cloned();
+        self.case_cache
+            .borrow_mut()
+            .insert(parent.to_path_buf(), entries);
+        found
+    }
+
+    fn resolve_existing_path_case_insensitive(&self, path: &Path) -> Option<PathBuf> {
+        if path.exists() {
+            return Some(path.to_path_buf());
+        }
+
+        let mut resolved = if path.is_absolute() {
+            PathBuf::new()
+        } else {
+            PathBuf::from(".")
+        };
+
+        for component in path.components() {
+            match component {
+                Component::Prefix(prefix) => resolved.push(prefix.as_os_str()),
+                Component::RootDir => resolved.push(component.as_os_str()),
+                Component::CurDir => {}
+                Component::ParentDir => resolved.push(component.as_os_str()),
+                Component::Normal(name) => {
+                    let exact = resolved.join(name);
+                    if exact.exists() {
+                        resolved = exact;
+                    } else {
+                        resolved = self.find_child_case_insensitive(&resolved, name)?;
+                    }
+                }
+            }
+        }
+
+        resolved.exists().then_some(resolved)
+    }
+}
+
+fn os_str_case_key(value: &OsStr) -> String {
+    value.to_string_lossy().to_ascii_lowercase()
+}
+
+fn find_child_case_insensitive(parent: &Path, name: &OsStr) -> Option<PathBuf> {
+    fs::read_dir(parent)
+        .ok()?
+        .map_while(Result::ok)
+        .find(|entry| os_str_eq_ignore_ascii_case(&entry.file_name(), name))
+        .map(|entry| entry.path())
+}
+
+fn os_str_eq_ignore_ascii_case(left: &OsStr, right: &OsStr) -> bool {
+    os_str_case_key(left) == os_str_case_key(right)
+}
+
+fn read_dir_case_map(parent: &Path) -> Option<HashMap<String, PathBuf>> {
+    let mut entries = HashMap::new();
+    for entry in fs::read_dir(parent).ok()?.map_while(Result::ok) {
+        entries
+            .entry(os_str_case_key(&entry.file_name()))
+            .or_insert_with(|| entry.path());
+    }
+    Some(entries)
+}
+
+fn resolve_existing_path_case_insensitive(path: &Path) -> Option<PathBuf> {
+    if path.exists() {
+        return Some(path.to_path_buf());
+    }
+
+    let mut resolved = if path.is_absolute() {
+        PathBuf::new()
+    } else {
+        PathBuf::from(".")
+    };
+
+    for component in path.components() {
+        match component {
+            Component::Prefix(prefix) => resolved.push(prefix.as_os_str()),
+            Component::RootDir => resolved.push(component.as_os_str()),
+            Component::CurDir => {}
+            Component::ParentDir => resolved.push(component.as_os_str()),
+            Component::Normal(name) => {
+                let exact = resolved.join(name);
+                if exact.exists() {
+                    resolved = exact;
+                } else {
+                    resolved = find_child_case_insensitive(&resolved, name)?;
+                }
+            }
+        }
+    }
+
+    resolved.exists().then_some(resolved)
+}
+
+fn resolve_existing_dir_case_insensitive(path: &Path) -> Option<PathBuf> {
+    resolve_existing_path_case_insensitive(path).filter(|resolved| resolved.is_dir())
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -323,13 +471,15 @@ impl Eq for ParsedPlugin {}
 
 impl PartialEq<Self> for ParsedPlugin {
     fn eq(&self, other: &Self) -> bool {
-        self.name == other.name
+        self.name.eq_ignore_ascii_case(&other.name)
     }
 }
 
 impl Hash for ParsedPlugin {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.name.hash(state);
+        for byte in self.name.bytes() {
+            state.write_u8(byte.to_ascii_lowercase());
+        }
     }
 }
 
@@ -420,17 +570,15 @@ fn read_ini_file(data_dirs: &DataDirs, path: &Path) -> Result<Vec<String>> {
 
 impl ParsedPlugins {
     /// Helper function for returning an `Err` if `dir` does not exist or is otherwise inaccessible.
-    pub fn check_dir_exists(dir: impl AsRef<Path>) -> Result<()> {
+    pub fn resolve_dir(dir: impl AsRef<Path>) -> Result<PathBuf> {
         let path = dir.as_ref();
-        let exists = path
-            .try_exists()
-            .with_context(|| anyhow!("Unable to find `{}` directory", path.to_string_lossy()))?;
+        resolve_existing_dir_case_insensitive(path)
+            .with_context(|| anyhow!("The `{}` directory does not exist", path.to_string_lossy()))
+    }
 
-        if !exists {
-            bail!("The `{}` directory does not exist", path.to_string_lossy());
-        }
-
-        Ok(())
+    /// Helper function for returning an `Err` if `dir` does not exist or is otherwise inaccessible.
+    pub fn check_dir_exists(dir: impl AsRef<Path>) -> Result<()> {
+        Self::resolve_dir(dir).map(|_| ())
     }
 
     /// Creates a new [`ParsedPlugins`].
@@ -644,10 +792,11 @@ impl ParsedPlugins {
 #[cfg(test)]
 mod tests {
     use super::{
-        DataDirs, ParsedPlugins, PluginListSource, is_esm, is_generated_output_plugin, meta_name,
-        sort_plugins,
+        DataDirs, ParsedPlugin, ParsedPlugins, PluginListSource, is_esm,
+        is_generated_output_plugin, meta_name, sort_plugins,
     };
     use crate::cli::SortOrder;
+    use std::collections::HashSet;
     use std::fs;
     use std::path::Path;
     use std::thread;
@@ -722,6 +871,41 @@ mod tests {
         assert!(parsed.masters.is_empty());
         assert!(parsed.plugins.is_empty());
         fs::remove_dir_all(data_dir).expect("cleanup temp dir");
+    }
+
+    #[test]
+    fn data_dirs_resolve_data_dir_and_child_components_case_insensitively() {
+        let root = create_temp_data_dir();
+        let data_dir = root.join("Data Files");
+        let nested_dir = data_dir.join("Sub Dir");
+        fs::create_dir_all(&nested_dir).expect("create nested data dir");
+        let plugin_path = nested_dir.join("Plugin.ESP");
+        create_empty_file(&plugin_path);
+
+        let data_dirs = DataDirs::single(root.join("data files"));
+        let resolved_dir =
+            ParsedPlugins::resolve_dir(root.join("data files")).expect("resolve data dir");
+
+        assert_eq!(resolved_dir, data_dir);
+        assert_eq!(
+            data_dirs.resolve("sub dir/plugin.esp"),
+            Some(plugin_path.clone())
+        );
+
+        fs::remove_dir_all(root).expect("cleanup temp dir");
+    }
+
+    #[test]
+    fn parsed_plugin_identity_is_case_insensitive() {
+        let plugin = ParsedPlugin::empty("Plugin.ESP");
+        let same_plugin = ParsedPlugin::empty("plugin.esp");
+
+        assert!(plugin == same_plugin);
+
+        let mut plugins = HashSet::new();
+        plugins.insert(plugin);
+
+        assert!(plugins.contains(&same_plugin));
     }
 
     #[test]

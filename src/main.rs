@@ -232,9 +232,8 @@ mod cli {
 
         pub fn data_files_dir(&self) -> Result<PathBuf> {
             let dir = &self.data_files_dir;
-            ParsedPlugins::check_dir_exists(dir)
-                .with_context(|| anyhow!("Invalid `Data Files` directory"))?;
-            Ok(PathBuf::from(dir))
+            ParsedPlugins::resolve_dir(dir)
+                .with_context(|| anyhow!("Invalid `Data Files` directory"))
         }
 
         /// Returns `true` unless classic Morrowind mode was requested explicitly.
@@ -275,9 +274,8 @@ mod cli {
                 .output_file_dir
                 .as_ref()
                 .unwrap_or(&self.data_files_dir);
-            ParsedPlugins::check_dir_exists(dir)
-                .with_context(|| anyhow!("Invalid output file directory"))?;
-            Ok(PathBuf::from(dir))
+            ParsedPlugins::resolve_dir(dir)
+                .with_context(|| anyhow!("Invalid output file directory"))
         }
 
         pub fn stack_size(&self) -> usize {
@@ -344,6 +342,10 @@ fn format_thread_panic(panic: Box<dyn Any + Send + 'static>) -> String {
 }
 
 fn ensure_output_file_dir_exists(dir: PathBuf, source: &str) -> Result<PathBuf> {
+    if let Ok(existing_dir) = ParsedPlugins::resolve_dir(&dir) {
+        return Ok(existing_dir);
+    }
+
     fs::create_dir_all(&dir).with_context(|| {
         anyhow!(
             "Unable to create output file directory from {} at {}",
@@ -355,7 +357,7 @@ fn ensure_output_file_dir_exists(dir: PathBuf, source: &str) -> Result<PathBuf> 
     ParsedPlugins::check_dir_exists(&dir)
         .with_context(|| anyhow!("Invalid output file directory from {source}"))?;
 
-    Ok(dir)
+    ParsedPlugins::resolve_dir(dir)
 }
 
 fn run_merge_on_worker_thread(cli: Cli) -> Result<()> {
@@ -1707,7 +1709,7 @@ mod tests {
     }
 
     #[test]
-    fn cleanup_keeps_new_cell_output_needed_to_override_excluded_height() {
+    fn cleanup_removes_new_cell_output_when_only_excluded_height_differs() {
         run_with_large_stack(|| {
             let coords = (0, 0);
             let excluded_height = PluginMeta {
@@ -1730,8 +1732,8 @@ mod tests {
             clean_landmass_diff(&mut merged_lands, &raw_load_order_landmass);
 
             assert!(
-                merged_lands.land.contains_key(&coords),
-                "output LAND is needed because saving the included color also materializes a default height that overrides the excluded loaded height"
+                !merged_lands.land.contains_key(&coords),
+                "a new cell with no replacement height should not be kept just to materialize default height"
             );
         });
     }

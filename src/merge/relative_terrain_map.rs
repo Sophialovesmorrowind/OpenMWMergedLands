@@ -14,17 +14,6 @@ pub struct RelativeTerrainMap<U: RelativeTo, const T: usize> {
     has_difference: TerrainMap<bool, T>,
 }
 
-/// Type-erased struct for holding default [`RelativeTerrainMap`] constants.
-pub struct DefaultRelativeTerrainMap {}
-
-impl DefaultRelativeTerrainMap {
-    /// A blank [`RelativeTerrainMap`] representing an empty height map.
-    pub const HEIGHT_MAP: RelativeTerrainMap<i32, 65> = RelativeTerrainMap::default();
-
-    /// A blank [`RelativeTerrainMap`] representing an empty vertex normals map.
-    pub const VERTEX_NORMALS: RelativeTerrainMap<Vec3<i8>, 65> = RelativeTerrainMap::default();
-}
-
 impl<U: RelativeTo, const T: usize> SquareGridIterator<T> for RelativeTerrainMap<U, T> {
     fn iter_grid(&self) -> GridIterator2D<T, T> {
         GridIterator2D::default()
@@ -32,18 +21,6 @@ impl<U: RelativeTo, const T: usize> SquareGridIterator<T> for RelativeTerrainMap
 }
 
 impl<U: RelativeTo, const T: usize> RelativeTerrainMap<U, T> {
-    /// Creates a [`RelativeTerrainMap`] with defaults.
-    pub const fn default() -> Self {
-        let reference = [[<U as ConstDefault>::DEFAULT; T]; T];
-        let relative = [[<<U as RelativeTo>::Delta as ConstDefault>::DEFAULT; T]; T];
-        let has_difference = [[false; T]; T];
-        Self {
-            reference,
-            relative,
-            has_difference,
-        }
-    }
-
     /// Creates a [`RelativeTerrainMap`] from an existing reference [`TerrainMap`] without any
     /// differences from the reference.
     pub const fn empty(reference: TerrainMap<U, T>) -> Self {

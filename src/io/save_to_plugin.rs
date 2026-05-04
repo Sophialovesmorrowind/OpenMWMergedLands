@@ -6,7 +6,7 @@ use crate::land::height_map::calculate_vertex_heights_tes3;
 use crate::land::landscape_diff::LandscapeDiff;
 use crate::land::terrain_map::Vec3;
 use crate::land::textures::{KnownTextures, RemappedTextures};
-use crate::merge::relative_terrain_map::{DefaultRelativeTerrainMap, recompute_vertex_normals};
+use crate::merge::relative_terrain_map::recompute_vertex_normals;
 use crate::{Landmass, LandmassDiff};
 use anyhow::{Context, Result, anyhow};
 use log::{debug, trace, warn};
@@ -43,26 +43,26 @@ fn convert_landscape_diff_to_landscape(
 
     new_landscape.flags = landscape.flags;
     new_landscape.grid = (landscape.coords.x, landscape.coords.y);
-    new_landscape.landscape_flags =
-        LandscapeFlags::USES_VERTEX_HEIGHTS_AND_NORMALS | LandscapeFlags::UNKNOWN;
+    new_landscape.landscape_flags = LandscapeFlags::UNKNOWN;
 
-    let height_map = landscape
-        .height_map
-        .as_ref()
-        .unwrap_or(&DefaultRelativeTerrainMap::HEIGHT_MAP);
-    let vertex_normals = landscape
-        .vertex_normals
-        .as_ref()
-        .unwrap_or(&DefaultRelativeTerrainMap::VERTEX_NORMALS);
+    if let Some(height_map) = landscape.height_map.as_ref() {
+        new_landscape.landscape_flags |= LandscapeFlags::USES_VERTEX_HEIGHTS_AND_NORMALS;
 
-    new_landscape.vertex_heights = Some(calculate_vertex_heights_tes3(&height_map.to_terrain()));
+        new_landscape.vertex_heights =
+            Some(calculate_vertex_heights_tes3(&height_map.to_terrain()));
 
-    new_landscape.vertex_normals = Some(VertexNormals {
-        data: Box::new(convert_terrain_map(
-            &recompute_vertex_normals(height_map, Some(vertex_normals)),
-            Vec3::into,
-        )),
-    });
+        new_landscape.vertex_normals = Some(VertexNormals {
+            data: Box::new(convert_terrain_map(
+                &recompute_vertex_normals(height_map, landscape.vertex_normals.as_ref()),
+                Vec3::into,
+            )),
+        });
+    } else {
+        assert!(
+            landscape.vertex_normals.is_none(),
+            "cannot write vertex normals without vertex heights"
+        );
+    }
 
     if let Some(vertex_colors) = landscape.vertex_colors.as_ref() {
         new_landscape.landscape_flags |= LandscapeFlags::USES_VERTEX_COLORS;
@@ -387,6 +387,27 @@ mod tests {
         }
     }
 
+    fn landscape_diff_with_only_texture(
+        plugin: Arc<ParsedPlugin>,
+        coords: Vec2<i32>,
+        texture_index: u16,
+    ) -> LandscapeDiff {
+        let mut texture_indices =
+            RelativeTerrainMap::<IndexVTEX, 16>::empty([[IndexVTEX::new(0); 16]; 16]);
+        texture_indices.set_value(Index2D::new(1, 1), IndexVTEX::new(texture_index));
+
+        LandscapeDiff {
+            coords,
+            flags: ObjectFlags::default(),
+            height_map: None,
+            vertex_normals: None,
+            world_map_data: None,
+            vertex_colors: None,
+            texture_indices: Some(texture_indices),
+            plugins: vec![(plugin, LandData::default())],
+        }
+    }
+
     #[test]
     fn to_master_record_returns_file_size_for_existing_plugin() {
         let unique = format!(
@@ -439,6 +460,28 @@ mod tests {
             converted
                 .landscape_flags
                 .contains(LandscapeFlags::USES_VERTEX_HEIGHTS_AND_NORMALS)
+        );
+    }
+
+    #[test]
+    fn convert_landscape_diff_does_not_materialize_missing_height_data() {
+        let plugin = plugin("plugin.esp");
+        let landscape = landscape_diff_with_only_texture(plugin, Vec2::new(0, 0), 0);
+        let remapped = RemappedTextures::from(&[true]);
+
+        let converted = convert_landscape_diff_to_landscape(&landscape, &remapped);
+
+        assert!(converted.vertex_heights.is_none());
+        assert!(converted.vertex_normals.is_none());
+        assert!(
+            !converted
+                .landscape_flags
+                .contains(LandscapeFlags::USES_VERTEX_HEIGHTS_AND_NORMALS)
+        );
+        assert!(
+            converted
+                .landscape_flags
+                .contains(LandscapeFlags::USES_TEXTURES)
         );
     }
 
