@@ -71,7 +71,7 @@ impl DataDirs {
     }
 
     /// Searches for `name` in every data directory, highest priority first. Matching is
-    /// case-insensitive for every path component, matching OpenMW's VFS behavior.
+    /// case-insensitive for every path component, matching `OpenMW`'s VFS behavior.
     pub fn resolve(&self, name: &str) -> Option<PathBuf> {
         let cache_key = name.to_ascii_lowercase();
 
@@ -145,9 +145,8 @@ impl DataDirs {
         for component in path.components() {
             match component {
                 Component::Prefix(prefix) => resolved.push(prefix.as_os_str()),
-                Component::RootDir => resolved.push(component.as_os_str()),
+                Component::RootDir | Component::ParentDir => resolved.push(component.as_os_str()),
                 Component::CurDir => {}
-                Component::ParentDir => resolved.push(component.as_os_str()),
                 Component::Normal(name) => {
                     let exact = resolved.join(name);
                     if exact.exists() {
@@ -203,9 +202,8 @@ fn resolve_existing_path_case_insensitive(path: &Path) -> Option<PathBuf> {
     for component in path.components() {
         match component {
             Component::Prefix(prefix) => resolved.push(prefix.as_os_str()),
-            Component::RootDir => resolved.push(component.as_os_str()),
+            Component::RootDir | Component::ParentDir => resolved.push(component.as_os_str()),
             Component::CurDir => {}
-            Component::ParentDir => resolved.push(component.as_os_str()),
             Component::Normal(name) => {
                 let exact = resolved.join(name);
                 if exact.exists() {
