@@ -9,7 +9,7 @@
 
 ## Commands Agents Should Use
 - Quick capability check: `cargo metadata --format-version 1`.
-- Core verification: `cargo fmt --check` and `cargo test --locked`.
+- Core verification: `cargo fmt --check`, `cargo test --locked`, and `cargo clippy --workspace --all-targets --all-features -- -W clippy::pedantic -D warnings`.
 - CLI smoke check: `cargo run -- --help`.
 - Runtime mode is OpenMW by default; use `--vanilla` to switch to classic Morrowind behavior.
 

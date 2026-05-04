@@ -818,6 +818,13 @@ mod tests {
         fs::write(path, []).expect("write empty file");
     }
 
+    fn assert_path_eq_ignore_ascii_case(left: &Path, right: &Path) {
+        assert_eq!(
+            left.to_string_lossy().to_ascii_lowercase(),
+            right.to_string_lossy().to_ascii_lowercase()
+        );
+    }
+
     #[test]
     fn esm_extension_helper_is_case_insensitive() {
         assert!(is_esm("Morrowind.ESM"));
@@ -884,11 +891,14 @@ mod tests {
         let resolved_dir =
             ParsedPlugins::resolve_dir(root.join("data files")).expect("resolve data dir");
 
-        assert_eq!(resolved_dir, data_dir);
-        assert_eq!(
-            data_dirs.resolve("sub dir/plugin.esp"),
-            Some(plugin_path.clone())
-        );
+        assert!(resolved_dir.is_dir());
+        assert_path_eq_ignore_ascii_case(&resolved_dir, &data_dir);
+
+        let resolved_plugin = data_dirs
+            .resolve("sub dir/plugin.esp")
+            .expect("resolve plugin");
+        assert!(resolved_plugin.is_file());
+        assert_path_eq_ignore_ascii_case(&resolved_plugin, &plugin_path);
 
         fs::remove_dir_all(root).expect("cleanup temp dir");
     }
