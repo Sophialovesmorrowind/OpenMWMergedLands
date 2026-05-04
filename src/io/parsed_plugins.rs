@@ -819,10 +819,13 @@ mod tests {
     }
 
     fn assert_path_eq_ignore_ascii_case(left: &Path, right: &Path) {
-        assert_eq!(
-            left.to_string_lossy().to_ascii_lowercase(),
-            right.to_string_lossy().to_ascii_lowercase()
-        );
+        let normalize = |path: &Path| {
+            path.components()
+                .map(|component| component.as_os_str().to_string_lossy().to_ascii_lowercase())
+                .collect::<Vec<_>>()
+        };
+
+        assert_eq!(normalize(left), normalize(right));
     }
 
     #[test]
