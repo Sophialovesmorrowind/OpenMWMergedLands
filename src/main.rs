@@ -614,7 +614,7 @@ fn prompt_for_explicit_openmw_cfg() -> Result<Option<PathBuf>> {
 
 fn prompted_path(input: &str) -> Option<PathBuf> {
     let path = input.trim().trim_matches(|c| c == '"' || c == '\'');
-    (!path.is_empty()).then(|| PathBuf::from(path))
+    (!path.is_empty()).then(|| PathBuf::from(path.replace("\\ ", " ")))
 }
 
 fn explicit_openmw_cfg_path(path: PathBuf) -> Result<PathBuf> {
@@ -1787,6 +1787,25 @@ mod tests {
             Some(PathBuf::from("/tmp/openmw/openmw.cfg"))
         );
         assert_eq!(prompted_path("   "), None);
+    }
+
+    #[test]
+    fn prompted_path_accepts_windows_paths_with_spaces() {
+        let path = r"C:\Users\Pandorable\Documents\My Games\OpenMW\openmw.cfg";
+
+        assert_eq!(prompted_path(path), Some(PathBuf::from(path)));
+        assert_eq!(
+            prompted_path(&format!("\"{path}\"")),
+            Some(PathBuf::from(path))
+        );
+    }
+
+    #[test]
+    fn prompted_path_accepts_shell_escaped_spaces() {
+        assert_eq!(
+            prompted_path(r"/home/pandorable/My\ Games/OpenMW/openmw.cfg"),
+            Some(PathBuf::from("/home/pandorable/My Games/OpenMW/openmw.cfg"))
+        );
     }
 
     #[test]
