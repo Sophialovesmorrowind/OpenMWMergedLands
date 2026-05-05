@@ -419,6 +419,66 @@ fn is_generated_output_plugin(plugin_name: &str, generated_output_names: &[Strin
         .any(|output_name| plugin_name.eq_ignore_ascii_case(output_name))
 }
 
+#[derive(Debug, Default)]
+pub struct PluginFilter {
+    ignored_plugins: HashSet<String>,
+    ignored_plugin_paths: Vec<PathBuf>,
+}
+
+impl PluginFilter {
+    #[must_use]
+    pub fn new(ignored_plugins: &[String], ignored_plugin_paths: Vec<PathBuf>) -> Self {
+        Self {
+            ignored_plugins: ignored_plugins
+                .iter()
+                .map(|plugin_name| plugin_name.to_ascii_lowercase())
+                .collect(),
+            ignored_plugin_paths,
+        }
+    }
+
+    fn should_ignore_plugin(&self, data_dirs: &DataDirs, plugin_name: &str) -> bool {
+        if self.ignored_plugins.is_empty() && self.ignored_plugin_paths.is_empty() {
+            return false;
+        }
+
+        let plugin_name_key = plugin_name.to_ascii_lowercase();
+        let plugin_file_name_key = plugin_file_name(plugin_name).to_ascii_lowercase();
+
+        if self.ignored_plugins.contains(&plugin_name_key)
+            || self.ignored_plugins.contains(&plugin_file_name_key)
+        {
+            return true;
+        }
+
+        if self.ignored_plugin_paths.is_empty() {
+            return false;
+        }
+
+        data_dirs.resolve(plugin_name).is_some_and(|path| {
+            self.ignored_plugin_paths
+                .iter()
+                .any(|ignored_path| path_starts_with_case_insensitive(&path, ignored_path))
+        })
+    }
+}
+
+fn path_starts_with_case_insensitive(path: &Path, prefix: &Path) -> bool {
+    let path_components = path_components_case_key(path);
+    let prefix_components = path_components_case_key(prefix);
+
+    path_components.starts_with(&prefix_components)
+}
+
+fn path_components_case_key(path: &Path) -> Vec<String> {
+    path.components()
+        .filter_map(|component| match component {
+            Component::CurDir => None,
+            _ => Some(component.as_os_str().to_string_lossy().to_ascii_lowercase()),
+        })
+        .collect()
+}
+
 // -------------------------------------------------------------------------------------------------
 // ParsedPlugin / ParsedPlugins
 // -------------------------------------------------------------------------------------------------
@@ -594,6 +654,7 @@ impl ParsedPlugins {
         source: PluginListSource,
         sort_order: SortOrder,
         generated_output_names: &[String],
+        plugin_filter: &PluginFilter,
         is_openmw_mode: bool,
     ) -> Result<Self> {
         for dir in data_dirs.iter() {
@@ -636,6 +697,14 @@ impl ParsedPlugins {
             let should_keep = !is_generated_output_plugin(plugin_name, generated_output_names);
             if !should_keep {
                 debug!("Skipping generated output plugin {plugin_name}");
+            }
+            should_keep
+        });
+
+        all_plugins.retain(|plugin_name| {
+            let should_keep = !plugin_filter.should_ignore_plugin(data_dirs, plugin_name);
+            if !should_keep {
+                debug!("Skipping ignored plugin {plugin_name}");
             }
             should_keep
         });
@@ -790,7 +859,7 @@ impl ParsedPlugins {
 #[cfg(test)]
 mod tests {
     use super::{
-        DataDirs, ParsedPlugin, ParsedPlugins, PluginListSource, is_esm,
+        DataDirs, ParsedPlugin, ParsedPlugins, PluginFilter, PluginListSource, is_esm,
         is_generated_output_plugin, meta_name, sort_plugins,
     };
     use crate::cli::SortOrder;
@@ -872,6 +941,7 @@ mod tests {
             PluginListSource::Explicit(vec!["Merged Lands.omwaddon".to_string()]),
             SortOrder::Default,
             &generated_outputs,
+            &PluginFilter::default(),
             true,
         )
         .expect("generated output should be skipped before file resolution");

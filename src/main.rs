@@ -1,7 +1,7 @@
 use crate::io::app_config::{CONFIG_FILE_NAME, MergedLandsConfig};
 use crate::io::meta_schema::{ConflictStrategy, MetaType};
 use crate::io::parsed_plugins::{
-    DataDirs, ParsedPlugin, ParsedPlugins, PluginListSource, load_openmw_cfg,
+    DataDirs, ParsedPlugin, ParsedPlugins, PluginFilter, PluginListSource, load_openmw_cfg,
 };
 use crate::io::save_to_image::save_landmass_images;
 use crate::io::save_to_plugin::{convert_landmass_diff_to_landmass, save_plugin};
@@ -18,6 +18,7 @@ use crate::repair::seam_detection::repair_landmass_seams;
 use crate::term_style::{bold, bold_red};
 use anyhow::{Context, Result, anyhow};
 use log::{debug, error, info, trace, warn};
+use openmw_config::{OpenMWConfiguration, try_default_config_path};
 use simplelog::{
     ColorChoice, CombinedLogger, ConfigBuilder, LevelFilter, LevelPadding, TermLogger,
     TerminalMode, WriteLogger,
@@ -25,8 +26,8 @@ use simplelog::{
 use std::any::Any;
 use std::collections::HashMap;
 use std::fs::{self, File};
-use std::io::Read;
-use std::path::PathBuf;
+use std::io::{IsTerminal, Read, Write, stdin, stdout};
+use std::path::{Path, PathBuf};
 use std::process::exit;
 use std::sync::Arc;
 use std::time::Instant;
@@ -148,8 +149,13 @@ mod cli {
     pub struct Cli {
         #[arg(long, default_value_t = String::from("."))]
         /// The directory containing the `Conflicts` folder.
-        /// This is also where the `log_file` and optional `merged_lands.toml` config are stored.
+        /// This is also where the `log_file` is stored.
         merged_lands_dir: String,
+
+        #[arg(long)]
+        /// The directory containing `merged_lands.toml`.
+        /// Defaults to the `OpenMW` config directory, falling back to the executable directory.
+        config_dir: Option<String>,
 
         #[arg(long, default_value_t = String::from("Data Files"))]
         /// The absolute or relative path to the `Data Files` folder containing plugins.
@@ -176,7 +182,8 @@ mod cli {
         #[arg(long)]
         /// The directory for the `output_file`.
         /// If not provided, the resolution order is:
-        /// `merged_lands.toml`, `OpenMW` `data-local`, then `data_files_dir` in `--vanilla` mode.
+        /// `merged_lands.toml` in `config_dir`, `OpenMW` `data-local`, then `data_files_dir` in
+        /// `--vanilla` mode.
         output_file_dir: Option<String>,
 
         #[arg(required = false)]
@@ -230,6 +237,10 @@ mod cli {
             PathBuf::from(dir)
         }
 
+        pub fn config_dir(&self) -> Option<PathBuf> {
+            self.config_dir.as_ref().map(PathBuf::from)
+        }
+
         pub fn data_files_dir(&self) -> Result<PathBuf> {
             let dir = &self.data_files_dir;
             ParsedPlugins::resolve_dir(dir)
@@ -241,12 +252,17 @@ mod cli {
             !self.vanilla
         }
 
-        /// Resolves the `OpenMW` config source. `OpenMW` is the default unless `--vanilla` is used,
-        /// and `--openmw-cfg` overrides the platform-default config location.
-        pub fn openmw_cfg_source(&self) -> Option<OpenMWCfgSource> {
+        /// Resolves the `OpenMW` config source. `OpenMW` is the default unless `--vanilla` is used.
+        /// The CLI path wins, then the saved app config path, then auto-detection.
+        pub fn openmw_cfg_source(
+            &self,
+            app_config_openmw_cfg: Option<&str>,
+        ) -> Option<OpenMWCfgSource> {
             if self.vanilla {
                 None
             } else if let Some(path) = &self.openmw_cfg {
+                Some(OpenMWCfgSource::Path(PathBuf::from(path)))
+            } else if let Some(path) = app_config_openmw_cfg {
                 Some(OpenMWCfgSource::Path(PathBuf::from(path)))
             } else {
                 Some(OpenMWCfgSource::Default)
@@ -286,7 +302,9 @@ mod cli {
     #[cfg(test)]
     mod tests {
         use super::Cli;
+        use crate::io::parsed_plugins::OpenMWCfgSource;
         use clap::Parser;
+        use std::path::Path;
 
         #[test]
         fn default_mode_is_openmw() {
@@ -322,6 +340,43 @@ mod cli {
             let rendered = err.to_string();
             assert!(
                 rendered.contains("cannot be used with") || rendered.contains("conflicts with")
+            );
+        }
+
+        #[test]
+        fn openmw_cfg_source_uses_saved_app_config_path() {
+            let cli = Cli::try_parse_from(["merged_lands"]).expect("CLI should parse");
+
+            let Some(OpenMWCfgSource::Path(path)) =
+                cli.openmw_cfg_source(Some("/tmp/saved/openmw.cfg"))
+            else {
+                panic!("saved app config path should be used");
+            };
+
+            assert_eq!(path, Path::new("/tmp/saved/openmw.cfg"));
+        }
+
+        #[test]
+        fn openmw_cfg_source_prefers_cli_path_over_saved_app_config_path() {
+            let cli = Cli::try_parse_from(["merged_lands", "--openmw-cfg", "/tmp/cli/openmw.cfg"])
+                .expect("CLI should parse");
+
+            let Some(OpenMWCfgSource::Path(path)) =
+                cli.openmw_cfg_source(Some("/tmp/saved/openmw.cfg"))
+            else {
+                panic!("CLI path should be used");
+            };
+
+            assert_eq!(path, Path::new("/tmp/cli/openmw.cfg"));
+        }
+
+        #[test]
+        fn vanilla_mode_ignores_saved_openmw_cfg_path() {
+            let cli = Cli::try_parse_from(["merged_lands", "--vanilla"]).expect("CLI should parse");
+
+            assert!(
+                cli.openmw_cfg_source(Some("/tmp/saved/openmw.cfg"))
+                    .is_none()
             );
         }
     }
@@ -403,7 +458,11 @@ fn print_startup_banner() {
     println!("{}", OPENMW_LOGO_ASCII.trim_end());
 }
 
-fn generated_output_file_names(cli: &Cli) -> Vec<String> {
+fn generated_output_file_names(
+    cli: &Cli,
+    app_config: &MergedLandsConfig,
+    output_file_dir: &Path,
+) -> Vec<String> {
     let mut names = vec![
         DEFAULT_OPENMW_OUTPUT_FILE.to_string(),
         DEFAULT_VANILLA_OUTPUT_FILE.to_string(),
@@ -417,7 +476,157 @@ fn generated_output_file_names(cli: &Cli) -> Vec<String> {
         names.push(output_file_name.to_string());
     }
 
+    for output_file_name in app_config.generated_output_files_that_exist(output_file_dir) {
+        if !names
+            .iter()
+            .any(|name| name.eq_ignore_ascii_case(&output_file_name))
+        {
+            names.push(output_file_name);
+        }
+    }
+
     names
+}
+
+fn preferred_openmw_config_dir(cli: &Cli) -> Option<PathBuf> {
+    cli.openmw_cfg
+        .as_ref()
+        .map(|path| openmw_cfg_path_to_dir(Path::new(path)))
+        .or_else(|| try_default_config_path().ok())
+}
+
+fn openmw_cfg_path_to_dir(path: &Path) -> PathBuf {
+    if path.file_name().is_some_and(|file_name| {
+        file_name
+            .to_string_lossy()
+            .eq_ignore_ascii_case("openmw.cfg")
+    }) {
+        return path
+            .parent()
+            .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
+    }
+
+    path.to_path_buf()
+}
+
+fn should_prompt_for_openmw_cfg(
+    cli: &Cli,
+    app_config: &MergedLandsConfig,
+    app_config_created: bool,
+) -> bool {
+    app_config_created
+        && cli.is_openmw_mode()
+        && cli.openmw_cfg.is_none()
+        && app_config.openmw_cfg().is_none()
+}
+
+fn maybe_prompt_for_openmw_cfg(
+    cli: &Cli,
+    app_config: &mut MergedLandsConfig,
+    app_config_dir: &Path,
+    app_config_created: bool,
+) -> Result<()> {
+    if !should_prompt_for_openmw_cfg(cli, app_config, app_config_created) {
+        return Ok(());
+    }
+
+    if !stdin().is_terminal() {
+        debug!("Skipping first-run OpenMW config prompt because stdin is not interactive");
+        return Ok(());
+    }
+
+    let openmw_cfg = prompt_for_openmw_cfg()?;
+    app_config.set_openmw_cfg(&openmw_cfg);
+    app_config.save(app_config_dir)?;
+    let app_config_path = app_config_dir.join(CONFIG_FILE_NAME);
+
+    println!();
+    println!(
+        "Saved default OpenMW configuration path to {}.",
+        app_config_path.to_string_lossy()
+    );
+    println!("You can change it later by editing `openmw_cfg` in that file.");
+    println!("Continuing with merge...");
+
+    info!(
+        "Saved OpenMW configuration path to {}",
+        app_config_path.to_string_lossy()
+    );
+
+    Ok(())
+}
+
+fn prompt_for_openmw_cfg() -> Result<PathBuf> {
+    loop {
+        println!();
+        println!("First run setup: choose OpenMW configuration source.");
+        println!("1. Provide a path to openmw.cfg or a directory containing it");
+        println!("2. Try OpenMW auto-detect");
+        print!("Enter 1 or 2: ");
+        stdout()
+            .flush()
+            .with_context(|| anyhow!("Unable to write OpenMW config prompt"))?;
+
+        let mut selection = String::new();
+        stdin()
+            .read_line(&mut selection)
+            .with_context(|| anyhow!("Unable to read OpenMW config prompt"))?;
+
+        match selection.trim() {
+            "1" => {
+                if let Some(path) = prompt_for_explicit_openmw_cfg()? {
+                    return Ok(path);
+                }
+            }
+            "2" => match autodetect_openmw_cfg_path() {
+                Ok(path) => return Ok(path),
+                Err(error) => println!("Auto-detect could not load openmw.cfg: {error:?}"),
+            },
+            _ => println!("Please enter 1 or 2."),
+        }
+    }
+}
+
+fn prompt_for_explicit_openmw_cfg() -> Result<Option<PathBuf>> {
+    print!("Path to openmw.cfg or its directory: ");
+    stdout()
+        .flush()
+        .with_context(|| anyhow!("Unable to write OpenMW config path prompt"))?;
+
+    let mut input = String::new();
+    stdin()
+        .read_line(&mut input)
+        .with_context(|| anyhow!("Unable to read OpenMW config path"))?;
+
+    let Some(path) = prompted_path(&input) else {
+        println!("Path cannot be empty.");
+        return Ok(None);
+    };
+
+    match explicit_openmw_cfg_path(path) {
+        Ok(path) => Ok(Some(path)),
+        Err(error) => {
+            println!("Could not load openmw.cfg: {error:?}");
+            Ok(None)
+        }
+    }
+}
+
+fn prompted_path(input: &str) -> Option<PathBuf> {
+    let path = input.trim().trim_matches(|c| c == '"' || c == '\'');
+    (!path.is_empty()).then(|| PathBuf::from(path))
+}
+
+fn explicit_openmw_cfg_path(path: PathBuf) -> Result<PathBuf> {
+    OpenMWConfiguration::new(Some(path))
+        .map(|config| config.root_config_file().to_path_buf())
+        .map_err(|error| anyhow!("Failed to load openmw.cfg: {error:?}"))
+}
+
+fn autodetect_openmw_cfg_path() -> Result<PathBuf> {
+    OpenMWConfiguration::from_env()
+        .map(|config| config.root_config_file().to_path_buf())
+        .map_err(|error| anyhow!("Failed to load openmw.cfg: {error:?}"))
 }
 
 fn wait_for_user_exit(wait_for_exit: bool) {
@@ -457,14 +666,32 @@ fn merge_all(cli: &Cli) -> Result<()> {
     // optional `.mergedlands.toml` if it existed. The Arc<...> is copied into each LandscapeDiff.
     info!(":: Parsing Plugins ::");
 
-    let merged_lands_dir = cli.merged_lands_dir();
-    let app_config = MergedLandsConfig::load(&merged_lands_dir)?;
+    let app_config_location =
+        MergedLandsConfig::resolve_location(cli.config_dir(), preferred_openmw_config_dir(cli))?;
+    if app_config_location.source() == crate::io::app_config::AppConfigSource::ExecutableDir {
+        warn!(
+            "Unable to use the OpenMW config directory for {}; using {}",
+            CONFIG_FILE_NAME,
+            app_config_location.dir().to_string_lossy()
+        );
+    } else {
+        debug!(
+            "Using app config directory {}",
+            app_config_location.dir().to_string_lossy()
+        );
+    }
+
+    let app_config_dir = app_config_location.dir().to_path_buf();
+    let loaded_app_config = MergedLandsConfig::load_or_create(&app_config_dir)?;
+    let app_config_created = loaded_app_config.created;
+    let mut app_config = loaded_app_config.config;
+    maybe_prompt_for_openmw_cfg(cli, &mut app_config, &app_config_dir, app_config_created)?;
 
     // Determine whether we're in default OpenMW mode (`openmw.cfg`) or classic Morrowind mode
     // (`--vanilla`, using a single `Data Files` directory + Morrowind.ini). These two paths
     // differ in how data directories and the load order are discovered.
     let (data_dirs, plugin_source, effective_sort_order, default_openmw_output_dir) =
-        if let Some(cfg_source) = cli.openmw_cfg_source() {
+        if let Some(cfg_source) = cli.openmw_cfg_source(app_config.openmw_cfg()) {
             let openmw_config = load_openmw_cfg(cfg_source)?;
             let data_dirs = openmw_config.data_dirs;
             let cfg_content_files = openmw_config.plugins;
@@ -509,13 +736,35 @@ fn merge_all(cli: &Cli) -> Result<()> {
             (data_dirs, source, cli.sort_order, None)
         };
 
+    // Output path precedence:
+    //  1. `--output-file-dir`
+    //  2. `output_file_dir` in `merged_lands.toml`
+    //  3. OpenMW `data-local`
+    //  4. `data_files_dir` in `--vanilla` mode
+    let output_file_dir = match cli.output_file_dir_override() {
+        Some(_) => cli.output_file_dir()?,
+        None => match app_config.output_file_dir(&app_config_dir) {
+            Some(dir) => ensure_output_file_dir_exists(dir, CONFIG_FILE_NAME)?,
+            None if cli.is_openmw_mode() => ensure_output_file_dir_exists(
+                default_openmw_output_dir.expect("OpenMW mode should provide data-local"),
+                "openmw.cfg data-local",
+            )?,
+            None => cli.output_file_dir()?,
+        },
+    };
+
     let is_openmw_mode = cli.is_openmw_mode();
-    let generated_output_names = generated_output_file_names(cli);
+    let generated_output_names = generated_output_file_names(cli, &app_config, &output_file_dir);
+    let plugin_filter = PluginFilter::new(
+        app_config.ignore_plugins(),
+        app_config.ignore_plugins_from_path(&app_config_dir),
+    );
     let parsed_plugins = ParsedPlugins::new(
         &data_dirs,
         plugin_source,
         effective_sort_order,
         &generated_output_names,
+        &plugin_filter,
         is_openmw_mode,
     )?;
     debug!("Parsed plugins in {:?}", phase_start.elapsed());
@@ -641,26 +890,6 @@ fn merge_all(cli: &Cli) -> Result<()> {
     //  - [IMPLEMENTATION NOTE] Reuse last modified date if the ESP already exists.
     info!(":: Saving ::");
 
-    // Output path precedence:
-    //  1. `--output-file-dir`
-    //  2. `merged_lands.toml` in `merged_lands_dir`
-    //  3. OpenMW `data-local`
-    //  4. `data_files_dir` in `--vanilla` mode
-    let output_file_dir = match cli.output_file_dir_override() {
-        Some(_) => cli.output_file_dir()?,
-        None => match app_config
-            .as_ref()
-            .and_then(|config| config.output_file_dir(&merged_lands_dir))
-        {
-            Some(dir) => ensure_output_file_dir_exists(dir, CONFIG_FILE_NAME)?,
-            None if cli.is_openmw_mode() => ensure_output_file_dir_exists(
-                default_openmw_output_dir.expect("OpenMW mode should provide data-local"),
-                "openmw.cfg data-local",
-            )?,
-            None => cli.output_file_dir()?,
-        },
-    };
-
     let file_name = cli.output_file_name();
     save_plugin(
         &data_dirs,
@@ -670,7 +899,9 @@ fn merge_all(cli: &Cli) -> Result<()> {
         &landmass,
         &known_textures,
     )?;
-    debug!("Saved plugin and metadata in {:?}", phase_start.elapsed());
+    app_config.record_generated_output(file_name);
+    app_config.save(&app_config_dir)?;
+    debug!("Saved plugin and app config in {:?}", phase_start.elapsed());
 
     info!(":: Finished ::");
     info!("Time Elapsed: {:?}", Instant::now().duration_since(start));
@@ -1237,10 +1468,12 @@ fn create_merged_lands_from_reference(reference: &Landmass) -> LandmassDiff {
 mod tests {
     use super::{
         create_merged_lands_from_reference, create_reference_and_modded_landmasses,
-        merge_landmass_into, merge_load_order_texture_indices, run_merge_on_worker_thread,
+        merge_landmass_into, merge_load_order_texture_indices, prompted_path,
+        run_merge_on_worker_thread, should_prompt_for_openmw_cfg,
     };
+    use crate::io::app_config::{CONFIG_FILE_NAME, MergedLandsConfig};
     use crate::io::meta_schema::{MergeSettings, PluginMeta};
-    use crate::io::parsed_plugins::{ParsedPlugin, ParsedPlugins, meta_name};
+    use crate::io::parsed_plugins::{ParsedPlugin, ParsedPlugins};
     use crate::land::grid_access::Index2D;
     use crate::land::height_map::calculate_vertex_heights_tes3;
     use crate::land::terrain_map::Vec3;
@@ -1419,14 +1652,28 @@ mod tests {
         plugin_names: &[&str],
         output_file_name: &str,
     ) -> (PathBuf, PathBuf) {
+        run_vanilla_merge_with_config(test_name, plugin_names, output_file_name, None)
+    }
+
+    fn run_vanilla_merge_with_config(
+        test_name: &str,
+        plugin_names: &[&str],
+        output_file_name: &str,
+        app_config: Option<&str>,
+    ) -> (PathBuf, PathBuf) {
         let root = unique_temp_dir(test_name);
         let data_files = root.join("Data Files");
         let output_dir = root.join("Output");
         let merged_lands_dir = root.join("MergedLands");
+        let config_dir = root.join("Config");
 
         fs::create_dir_all(&data_files).expect("create Data Files dir");
         fs::create_dir_all(&output_dir).expect("create output dir");
         fs::create_dir_all(merged_lands_dir.join("Conflicts")).expect("create conflicts dir");
+        fs::create_dir_all(&config_dir).expect("create config dir");
+        if let Some(app_config) = app_config {
+            fs::write(config_dir.join(CONFIG_FILE_NAME), app_config).expect("write app config");
+        }
 
         let mut args = vec![
             "merged_lands".to_string(),
@@ -1435,6 +1682,8 @@ mod tests {
             data_files.to_string_lossy().to_string(),
             "--merged-lands-dir".to_string(),
             merged_lands_dir.to_string_lossy().to_string(),
+            "--config-dir".to_string(),
+            config_dir.to_string_lossy().to_string(),
             "--output-file-dir".to_string(),
             output_dir.to_string_lossy().to_string(),
             "--output-file".to_string(),
@@ -1462,11 +1711,13 @@ mod tests {
         let data_files = root.join("Data Files");
         let output_dir = root.join("Output");
         let merged_lands_dir = root.join("MergedLands");
+        let config_dir = root.join("Config");
         let data_local = root.join("DataLocal");
         let openmw_cfg = root.join("openmw.cfg");
 
         fs::create_dir_all(&data_files).expect("create Data Files dir");
         fs::create_dir_all(&output_dir).expect("create output dir");
+        fs::create_dir_all(&config_dir).expect("create config dir");
         fs::create_dir_all(&data_local).expect("create data-local dir");
         fs::create_dir_all(merged_lands_dir.join("Conflicts")).expect("create conflicts dir");
 
@@ -1486,6 +1737,8 @@ mod tests {
             openmw_cfg.to_string_lossy().to_string(),
             "--merged-lands-dir".to_string(),
             merged_lands_dir.to_string_lossy().to_string(),
+            "--config-dir".to_string(),
+            config_dir.to_string_lossy().to_string(),
             "--output-file-dir".to_string(),
             output_dir.to_string_lossy().to_string(),
             "--output-file".to_string(),
@@ -1525,6 +1778,37 @@ mod tests {
 
     fn idx(v: u16) -> IndexVTEX {
         IndexVTEX::new(v)
+    }
+
+    #[test]
+    fn prompted_path_strips_quotes_and_whitespace() {
+        assert_eq!(
+            prompted_path("  \"/tmp/openmw/openmw.cfg\"  "),
+            Some(PathBuf::from("/tmp/openmw/openmw.cfg"))
+        );
+        assert_eq!(prompted_path("   "), None);
+    }
+
+    #[test]
+    fn first_run_prompt_only_applies_to_unspecified_openmw_cfg() {
+        let cli = crate::cli::Cli::try_parse_from(["merged_lands"]).expect("parse cli args");
+        let config = MergedLandsConfig::default();
+
+        assert!(should_prompt_for_openmw_cfg(&cli, &config, true));
+        assert!(!should_prompt_for_openmw_cfg(&cli, &config, false));
+
+        let cli_with_path =
+            crate::cli::Cli::try_parse_from(["merged_lands", "--openmw-cfg", "/tmp/openmw.cfg"])
+                .expect("parse cli args");
+        assert!(!should_prompt_for_openmw_cfg(&cli_with_path, &config, true));
+
+        let vanilla =
+            crate::cli::Cli::try_parse_from(["merged_lands", "--vanilla"]).expect("parse cli args");
+        assert!(!should_prompt_for_openmw_cfg(&vanilla, &config, true));
+
+        let mut saved_config = MergedLandsConfig::default();
+        saved_config.set_openmw_cfg(Path::new("/tmp/openmw.cfg"));
+        assert!(!should_prompt_for_openmw_cfg(&cli, &saved_config, true));
     }
 
     #[test]
@@ -1781,7 +2065,7 @@ mod tests {
     }
 
     #[test]
-    fn e2e_single_plugin_writes_meta_and_header() {
+    fn e2e_single_plugin_writes_app_config_and_header() {
         let root = unique_temp_dir("e2e_single_plugin");
         let data_files = root.join("Data Files");
         fs::create_dir_all(&data_files).expect("create Data Files");
@@ -1795,7 +2079,7 @@ mod tests {
             vec![],
         );
 
-        let (_root, output_dir) =
+        let (root, output_dir) =
             run_vanilla_merge("e2e_single_plugin_run", &[plugin_name], "MergedTest.esp");
         let merged_path = output_dir.join("MergedTest.esp");
         let merged = load_output_plugin(&merged_path);
@@ -1804,11 +2088,132 @@ mod tests {
             Some(TES3Object::Header(_))
         ));
 
-        let meta_path = output_dir.join(meta_name("MergedTest.esp"));
-        let meta_text = fs::read_to_string(meta_path).expect("read merged meta file");
-        let parsed: toml::Value = toml::from_str(&meta_text).expect("parse merged meta");
-        assert_eq!(parsed["version"].as_str(), Some("0"));
-        assert_eq!(parsed["meta_type"].as_str(), Some("MergedLands"));
+        let meta_path = output_dir.join("MergedTest.mergedlands.toml");
+        assert!(
+            !meta_path.exists(),
+            "generated output should not create a plugin sidecar meta file"
+        );
+
+        let config_path = root.join("Config").join(CONFIG_FILE_NAME);
+        let config_text = fs::read_to_string(config_path).expect("read app config");
+        let parsed: toml::Value = toml::from_str(&config_text).expect("parse app config");
+        let generated_outputs = parsed["generated_output_files"]
+            .as_array()
+            .expect("generated output list");
+        assert!(
+            generated_outputs
+                .iter()
+                .any(|name| name.as_str() == Some("MergedTest.esp"))
+        );
+    }
+
+    #[test]
+    fn e2e_app_config_ignore_plugins_skips_plugin_before_merge() {
+        let root = unique_temp_dir("e2e_ignore_plugin");
+        let data_files = root.join("Data Files");
+        let output_dir = root.join("Output");
+        let merged_lands_dir = root.join("MergedLands");
+        let config_dir = root.join("Config");
+        fs::create_dir_all(&data_files).expect("create Data Files");
+        fs::create_dir_all(&output_dir).expect("create output dir");
+        fs::create_dir_all(merged_lands_dir.join("Conflicts")).expect("create conflicts dir");
+        fs::create_dir_all(&config_dir).expect("create config dir");
+
+        let ignored_plugin = "Ignored.esp";
+        write_plugin_file(
+            &data_files.join(ignored_plugin),
+            ignored_plugin,
+            vec![fixture_land((0, 0), 64, None)],
+            vec![],
+            vec![],
+        );
+        fs::write(
+            config_dir.join(CONFIG_FILE_NAME),
+            "ignore_plugins = [\"Ignored.esp\"]\n",
+        )
+        .expect("write app config");
+
+        let cli = crate::cli::Cli::try_parse_from([
+            "merged_lands",
+            "--vanilla",
+            "--data-files-dir",
+            data_files.to_str().expect("data path utf8"),
+            "--merged-lands-dir",
+            merged_lands_dir.to_str().expect("merged path utf8"),
+            "--config-dir",
+            config_dir.to_str().expect("config path utf8"),
+            "--output-file-dir",
+            output_dir.to_str().expect("output path utf8"),
+            "--output-file",
+            "IgnoredOut.esp",
+            "--sort-order",
+            "none",
+            ignored_plugin,
+        ])
+        .expect("parse cli args");
+        run_merge_on_worker_thread(cli).expect("merge should succeed");
+
+        let merged = load_output_plugin(&output_dir.join("IgnoredOut.esp"));
+        let (_ltex_count, _cell_count, land_count) = count_objects(&merged);
+        assert_eq!(land_count, 0);
+
+        fs::remove_dir_all(root).expect("cleanup temp dir");
+    }
+
+    #[test]
+    fn e2e_app_config_ignore_plugins_from_path_skips_plugin_before_merge() {
+        let root = unique_temp_dir("e2e_ignore_plugin_path");
+        let data_files = root.join("Data Files");
+        let output_dir = root.join("Output");
+        let merged_lands_dir = root.join("MergedLands");
+        let config_dir = root.join("Config");
+        fs::create_dir_all(&data_files).expect("create Data Files");
+        fs::create_dir_all(&output_dir).expect("create output dir");
+        fs::create_dir_all(merged_lands_dir.join("Conflicts")).expect("create conflicts dir");
+        fs::create_dir_all(&config_dir).expect("create config dir");
+
+        let ignored_plugin = "PathIgnored.esp";
+        write_plugin_file(
+            &data_files.join(ignored_plugin),
+            ignored_plugin,
+            vec![fixture_land((0, 0), 64, None)],
+            vec![],
+            vec![],
+        );
+        fs::write(
+            config_dir.join(CONFIG_FILE_NAME),
+            format!(
+                "ignore_plugins_from_path = [\"{}\"]\n",
+                data_files.to_string_lossy()
+            ),
+        )
+        .expect("write app config");
+
+        let cli = crate::cli::Cli::try_parse_from([
+            "merged_lands",
+            "--vanilla",
+            "--data-files-dir",
+            data_files.to_str().expect("data path utf8"),
+            "--merged-lands-dir",
+            merged_lands_dir.to_str().expect("merged path utf8"),
+            "--config-dir",
+            config_dir.to_str().expect("config path utf8"),
+            "--output-file-dir",
+            output_dir.to_str().expect("output path utf8"),
+            "--output-file",
+            "PathIgnoredOut.esp",
+            "--sort-order",
+            "none",
+            ignored_plugin,
+        ])
+        .expect("parse cli args");
+        run_merge_on_worker_thread(cli).expect("merge should succeed");
+
+        let merged = load_output_plugin(&output_dir.join("PathIgnoredOut.esp"));
+        let (_ltex_count, _cell_count, land_count) = count_objects(&merged);
+        assert_eq!(land_count, 0);
+
+        fs::remove_dir_all(root).expect("cleanup temp dir");
     }
 
     #[test]

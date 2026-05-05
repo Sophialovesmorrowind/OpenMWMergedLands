@@ -1,5 +1,4 @@
 use crate::cli::SortOrder;
-use crate::io::meta_schema::{MergeSettings, MetaType, PluginMeta, VersionedPluginMeta};
 use crate::io::parsed_plugins::{DataDirs, ParsedPlugin, ParsedPlugins, meta_name, sort_plugins};
 use crate::land::conversions::convert_terrain_map;
 use crate::land::height_map::calculate_vertex_heights_tes3;
@@ -13,7 +12,7 @@ use log::{debug, trace, warn};
 use std::collections::HashSet;
 use std::fs;
 use std::io::ErrorKind;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tes3::esp::{
@@ -242,24 +241,12 @@ pub fn save_plugin(
         plugin.objects.push(TES3Object::Landscape(land.clone()));
     }
 
-    let meta_name = meta_name(output_name);
-    let merged_meta: PathBuf = [output_file_dir, Path::new(&meta_name)].iter().collect();
+    let stale_meta_name = meta_name(output_name);
+    let stale_meta_path = output_file_dir.join(&stale_meta_name);
+    trace!("Removing stale generated plugin meta file {stale_meta_name}");
+    remove_file_if_exists(&stale_meta_path)?;
 
-    let meta = VersionedPluginMeta::V0(PluginMeta {
-        meta_type: MetaType::MergedLands,
-        height_map: MergeSettings::default(),
-        vertex_colors: MergeSettings::default(),
-        texture_indices: MergeSettings::default(),
-        world_map_data: MergeSettings::default(),
-    });
-
-    trace!("Saving meta file {meta_name}");
-    remove_file_if_exists(&merged_meta)?;
-    fs::write(merged_meta, toml::to_string(&meta).expect("safe"))
-        .with_context(|| anyhow!("Unable to save plugin meta {meta_name}"))?;
-
-    let merged_filepath: PathBuf = [output_file_dir, Path::new(output_name)].iter().collect();
-
+    let merged_filepath = output_file_dir.join(output_name);
     trace!("Saving file {output_name}");
     remove_file_if_exists(&merged_filepath)?;
     plugin
@@ -535,6 +522,8 @@ mod tests {
 
         let source_name = "Source.esp";
         fs::write(data_dir.join(source_name), [1u8, 2, 3]).expect("write source plugin file");
+        fs::write(output_dir.join("MergedOut.mergedlands.toml"), "stale")
+            .expect("write stale generated meta");
 
         let source_plugin = plugin(source_name);
         let coords = Vec2::new(7, 9);
@@ -558,6 +547,7 @@ mod tests {
         assert_eq!(cell_count, 0);
         assert_eq!(land_count, 1);
         assert_eq!(ltex_count, 0);
+        assert!(!output_dir.join("MergedOut.mergedlands.toml").exists());
 
         let masters = header_masters(&output);
         assert_eq!(masters.len(), 1);

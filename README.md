@@ -69,13 +69,78 @@ In classic Morrowind mode (`--vanilla`), it instead defaults to `Merged Lands.es
 This can be changed with the `--output-file-dir` and `--output-file` arguments.
 
 If you want a persistent custom output directory without passing `--output-file-dir` every time,
-create a file named `merged_lands.toml` inside `--merged-lands-dir` and set:
+set `output_file_dir` in the application config file. See
+[Application Config](#application-config).
+
+### Application Config
+
+The tool keeps application-level settings in `merged_lands.toml`. This file is separate from
+per-plugin `.mergedlands.toml` patch files.
+
+By default, `merged_lands.toml` is created in the same config directory OpenMW uses:
+
+| OS | Default config directory |
+| --- | --- |
+| Linux | `$XDG_CONFIG_HOME/openmw` or `$HOME/.config/openmw` |
+| macOS | `$HOME/Library/Preferences/openmw` |
+| Windows | `Documents\My Games\OpenMW` |
+
+If the OpenMW config directory cannot be used, the tool falls back to writing `merged_lands.toml`
+next to the executable. You can override the config location with `--config-dir`.
+
+If `merged_lands.toml` does not exist, it is created during startup. On an interactive first run in
+OpenMW mode, the tool will ask whether to enter an explicit `openmw.cfg` path or try OpenMW
+auto-detection. The selected root `openmw.cfg` path is saved as `openmw_cfg` for future runs. In
+noninteractive runs, the prompt is skipped and auto-detection is used unless `--openmw-cfg` was
+passed.
+
+The file is also updated after a successful run to record generated output names. On first creation
+only, it is seeded with a default ignore list for generated or non-land-merge plugins that are
+expensive or unhelpful to parse:
 
 ```toml
-output_file_dir = "/absolute/path/to/your/output"
+ignore_plugins = [
+    "delta-merged.omwaddon",
+    "deleted_groundcover.omwaddon",
+    "S3LightFixes.omwaddon",
+    "distant_seafloor_2.00.esm",
+    "OMWLLFMod.omwaddon",
+    "merged.omwaddon",
+    "Merged Objects.esp",
+]
 ```
 
-Relative paths are also supported and are resolved relative to `--merged-lands-dir`.
+Existing config files are not overwritten with new defaults. Edit the list if your setup needs
+different behavior.
+
+Supported settings:
+
+```toml
+# Persistent OpenMW config path. Used only when --openmw-cfg is not passed.
+openmw_cfg = "/home/me/.config/openmw/openmw.cfg"
+
+# Persistent output directory. Used only when --output-file-dir is not passed.
+# Relative paths are resolved relative to the directory containing merged_lands.toml.
+output_file_dir = "/absolute/path/to/output"
+
+# Skip these plugin names before parsing.
+ignore_plugins = ["Some Generated Plugin.omwaddon"]
+
+# Skip plugins resolved from these directories before parsing.
+# Relative paths are resolved relative to the directory containing merged_lands.toml.
+ignore_plugins_from_path = ["/absolute/path/to/generated/plugins"]
+
+# Managed by the tool. Used to avoid parsing previous outputs if they still exist
+# in the resolved output directory.
+generated_output_files = ["Merged Lands.omwaddon"]
+```
+
+Output directory precedence is:
+
+1. `--output-file-dir`
+2. `output_file_dir` in `merged_lands.toml`
+3. OpenMW `data-local` in OpenMW mode
+4. `--data-files-dir` in classic `--vanilla` mode
 
 ### Troubleshooting Merges
 
@@ -115,15 +180,20 @@ to `openmw.cfg` (e.g., OpenMW Launcher, MO2 with an OpenMW configuration, Portmo
 
 ### OpenMW is the default
 
-If you do not pass any mode flag, the tool loads the platform-default `openmw.cfg`. The
-`OPENMW_CONFIG` and `OPENMW_CONFIG_DIR` environment variables are respected, as they are by
-OpenMW itself.
+If you do not pass any mode flag, the tool runs in OpenMW mode. Config source precedence is:
+
+1. `--openmw-cfg`
+2. `openmw_cfg` in `merged_lands.toml`
+3. OpenMW auto-detection
+
+Auto-detection uses the same `openmw-config` behavior as OpenMW: `OPENMW_CONFIG` first,
+`OPENMW_CONFIG_DIR` next, then the platform-default config directory.
 
 You can still override the config path with `--openmw-cfg <PATH>`, where `<PATH>` may be either
 a directory containing `openmw.cfg` or a direct path to the file. Example:
 
 ```bash
-# Use the platform default (or the OPENMW_CONFIG env var if set)
+# Use saved openmw_cfg, or auto-detect if none is saved
 merged_lands
 
 # Explicit path
@@ -148,18 +218,18 @@ To use classic Morrowind behavior instead, pass `--vanilla`.
 
 ### Persistent output override
 
-If you keep the tool in a dedicated folder, you can put a `merged_lands.toml` file in
-`--merged-lands-dir` to set a persistent output directory:
+Set `output_file_dir` in `merged_lands.toml` to choose a persistent output directory:
 
 ```toml
 output_file_dir = "Merged Output"
 ```
 
 This is only used when `--output-file-dir` is not passed. Relative paths are resolved relative to
-`--merged-lands-dir`.
+the directory containing `merged_lands.toml`. See [Application Config](#application-config) for
+the full config behavior.
 
-You can still override either source by passing an explicit plugin list on the command line; that
-list wins over whatever `openmw.cfg` says.
+Plugin discovery can still be overridden by passing an explicit plugin list on the command line;
+that list wins over whatever `openmw.cfg` says.
 
 ### ESP-as-master handling
 
@@ -172,7 +242,9 @@ A message is logged at `debug` level when a plugin is promoted from a plugin to 
 
 ## Supporting Patches
 
-The tool will automatically read `.mergedlands.toml` files from the `Data Files` directory.
+The tool will automatically read per-plugin `.mergedlands.toml` files from the configured plugin
+data directories. In classic `--vanilla` mode, that means the `Data Files` directory. In OpenMW
+mode, the tool searches the configured `data=` directories using OpenMW-style VFS priority.
 
 ```bash
 Data Files\
