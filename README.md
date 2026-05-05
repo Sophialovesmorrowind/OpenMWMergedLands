@@ -118,10 +118,13 @@ Supported settings:
 ```toml
 # Persistent OpenMW config path. Used only when --openmw-cfg is not passed.
 openmw_cfg = "/home/me/.config/openmw/openmw.cfg"
+# Windows paths can use TOML literal strings to avoid escaping backslashes.
+# openmw_cfg = 'C:\Users\Username\Documents\My Games\OpenMW\openmw.cfg'
 
 # Persistent output directory. Used only when --output-file-dir is not passed.
 # Relative paths are resolved relative to the directory containing merged_lands.toml.
 output_file_dir = "/absolute/path/to/output"
+# output_file_dir = 'C:\Users\Username\Documents\My Games\OpenMW\Merged Output'
 
 # Skip these plugin names before parsing.
 ignore_plugins = ["Some Generated Plugin.omwaddon"]
@@ -129,8 +132,6 @@ ignore_plugins = ["Some Generated Plugin.omwaddon"]
 # Skip plugins resolved from these directories before parsing.
 # Relative paths are resolved relative to the directory containing merged_lands.toml.
 ignore_plugins_from_path = ["/absolute/path/to/generated/plugins"]
-
-# Windows paths can use TOML literal strings to avoid escaping backslashes:
 # ignore_plugins_from_path = ['C:\Users\Username\Documents\My Games\OpenMW\Generated']
 
 # Managed by the tool. Used to avoid parsing previous outputs if they still exist
@@ -202,6 +203,12 @@ merged_lands
 # Explicit path
 merged_lands --openmw-cfg "/home/me/.config/openmw"
 merged_lands --openmw-cfg "/home/me/.config/openmw/openmw.cfg"
+```
+
+```powershell
+# Explicit Windows path
+merged_lands --openmw-cfg 'C:\Users\Username\Documents\My Games\OpenMW'
+merged_lands --openmw-cfg 'C:\Users\Username\Documents\My Games\OpenMW\openmw.cfg'
 ```
 
 To use classic Morrowind behavior instead, pass `--vanilla`.
