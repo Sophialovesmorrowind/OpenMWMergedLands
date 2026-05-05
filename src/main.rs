@@ -2199,12 +2199,13 @@ mod tests {
             vec![],
             vec![],
         );
+        let ignored_path = data_files
+            .to_string_lossy()
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"");
         fs::write(
             config_dir.join(CONFIG_FILE_NAME),
-            format!(
-                "ignore_plugins_from_path = [\"{}\"]\n",
-                data_files.to_string_lossy()
-            ),
+            format!("ignore_plugins_from_path = [\"{ignored_path}\"]\n"),
         )
         .expect("write app config");
 

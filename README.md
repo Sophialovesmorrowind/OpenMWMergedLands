@@ -130,6 +130,9 @@ ignore_plugins = ["Some Generated Plugin.omwaddon"]
 # Relative paths are resolved relative to the directory containing merged_lands.toml.
 ignore_plugins_from_path = ["/absolute/path/to/generated/plugins"]
 
+# Windows paths can use TOML literal strings to avoid escaping backslashes:
+# ignore_plugins_from_path = ['C:\Users\Username\Documents\My Games\OpenMW\Generated']
+
 # Managed by the tool. Used to avoid parsing previous outputs if they still exist
 # in the resolved output directory.
 generated_output_files = ["Merged Lands.omwaddon"]
