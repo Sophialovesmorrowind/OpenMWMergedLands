@@ -103,7 +103,6 @@ ignore_plugins = [
     "delta-merged.omwaddon",
     "deleted_groundcover.omwaddon",
     "S3LightFixes.omwaddon",
-    "distant_seafloor_2.00.esm",
     "OMWLLFMod.omwaddon",
     "merged.omwaddon",
     "Merged Objects.esp",
@@ -134,8 +133,14 @@ ignore_plugins = ["Some Generated Plugin.omwaddon"]
 ignore_plugins_from_path = ["/absolute/path/to/generated/plugins"]
 # ignore_plugins_from_path = ['C:\Users\Username\Documents\My Games\OpenMW\Generated']
 
-# Managed by the tool. Used to avoid parsing previous outputs if they still exist
-# in the resolved output directory.
+# Managed by the tool. Used to avoid parsing previous outputs if they still exist.
+# Fresh configs use "default_data_local" until the first successful run records the real path.
+# Relative paths are resolved relative to the directory containing merged_lands.toml.
+generated_output_dir = "default_data_local"
+# generated_output_dir = "/absolute/path/to/output"
+# generated_output_dir = 'C:\Users\Username\Documents\My Games\OpenMW\Merged Output'
+
+# Managed by the tool. Output plugin names previously written to generated_output_dir.
 generated_output_files = ["Merged Lands.omwaddon"]
 ```
 

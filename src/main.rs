@@ -462,6 +462,7 @@ fn generated_output_file_names(
     cli: &Cli,
     app_config: &MergedLandsConfig,
     output_file_dir: &Path,
+    app_config_dir: &Path,
 ) -> Vec<String> {
     let mut names = vec![
         DEFAULT_OPENMW_OUTPUT_FILE.to_string(),
@@ -476,7 +477,9 @@ fn generated_output_file_names(
         names.push(output_file_name.to_string());
     }
 
-    for output_file_name in app_config.generated_output_files_that_exist(output_file_dir) {
+    for output_file_name in
+        app_config.generated_output_files_that_exist(output_file_dir, app_config_dir)
+    {
         if !names
             .iter()
             .any(|name| name.eq_ignore_ascii_case(&output_file_name))
@@ -754,7 +757,8 @@ fn merge_all(cli: &Cli) -> Result<()> {
     };
 
     let is_openmw_mode = cli.is_openmw_mode();
-    let generated_output_names = generated_output_file_names(cli, &app_config, &output_file_dir);
+    let generated_output_names =
+        generated_output_file_names(cli, &app_config, &output_file_dir, &app_config_dir);
     let plugin_filter = PluginFilter::new(
         app_config.ignore_plugins(),
         app_config.ignore_plugins_from_path(&app_config_dir),
@@ -899,7 +903,7 @@ fn merge_all(cli: &Cli) -> Result<()> {
         &landmass,
         &known_textures,
     )?;
-    app_config.record_generated_output(file_name);
+    app_config.record_generated_output(&output_file_dir, file_name);
     app_config.save(&app_config_dir)?;
     debug!("Saved plugin and app config in {:?}", phase_start.elapsed());
 
@@ -2123,6 +2127,11 @@ mod tests {
             generated_outputs
                 .iter()
                 .any(|name| name.as_str() == Some("MergedTest.esp"))
+        );
+        let expected_generated_output_dir = output_dir.to_string_lossy();
+        assert_eq!(
+            parsed["generated_output_dir"].as_str(),
+            Some(expected_generated_output_dir.as_ref())
         );
     }
 
