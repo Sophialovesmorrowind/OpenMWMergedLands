@@ -13,7 +13,7 @@ jobs:
       contents: write
       pages: write
       id-token: write
-    uses: DreamWeave-MP/StroggForge/.github/workflows/rustGlobalBuild.yml@v32
+    uses: DreamWeave-MP/StroggForge/.github/workflows/rustGlobalBuild.yml@v33
     secrets:
       VT_API_KEY: ${{ secrets.VT_API_KEY }}
     with:
@@ -22,3 +22,4 @@ jobs:
       cargo_publish: false
       generate_discord_notification: false
       enable_android: true
+      enable_portmaster: true
