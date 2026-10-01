@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="589" viewBox="0 0 1600 589" role="img" aria-labelledby="title description">
   <title id="title">Merged Lands</title>
-  <desc id="description">A smiling sun with a golden ring of cartoon flames shines over layers of Morrowind-inspired terrain beneath the Merged Lands wordmark.</desc>
+  <desc id="description">A bright Pride rainbow with smiling clouds arches above layered terrain, including a triangular mountain with a small zigzag crack. A smiling sun with cartoon flames and three colorful psychedelic flowers surround the Merged Lands wordmark.</desc>
   <defs>
     <linearGradient id="sky" x2="0" y2="1">
       <stop stop-color="#c0d9d2"/>
@@ -15,6 +15,36 @@
     </pattern>
     <clipPath id="terrain"><path d="M0 365 155 286 312 338 477 248 623 307 800 260 968 327 1107 289 1306 364 1446 332 1600 367V589H0Z"/></clipPath>
     <path id="sun-flame" d="M-18-61C-22-77-3-77 0-94C0-78 22-77 18-61Z"/>
+    <path id="flower-petal" d="M-12-10C-36-29-31-61-8-61C15-61 27-34 12-18L0 0Z"/>
+    <g id="psychedelic-flower" stroke="#294b40" stroke-width="3" stroke-linejoin="round">
+      <use href="#flower-petal" fill="#f487d1"/>
+      <use href="#flower-petal" transform="rotate(45)" fill="#b79af3"/>
+      <use href="#flower-petal" transform="rotate(90)" fill="#7ee1d5"/>
+      <use href="#flower-petal" transform="rotate(135)" fill="#f6d775"/>
+      <use href="#flower-petal" transform="rotate(180)" fill="#f487d1"/>
+      <use href="#flower-petal" transform="rotate(225)" fill="#b79af3"/>
+      <use href="#flower-petal" transform="rotate(270)" fill="#7ee1d5"/>
+      <use href="#flower-petal" transform="rotate(315)" fill="#f6d775"/>
+      <circle r="22" fill="#f3d976"/>
+      <circle r="14" fill="#dca1e6" stroke="none"/>
+      <path d="M0 0C-5 0-5-8 1-8C12-8 14 8 3 12C-12 17-23-4-12-16" fill="none" stroke="#784782" stroke-width="3.5" stroke-linecap="round"/>
+    </g>
+    <g id="flower-leaf">
+      <path d="M0 0C-36 8-56-5-64-30C-27-33-9-19 0 0Z" fill="currentColor" stroke="#294b40" stroke-width="3"/>
+      <path d="M-5-3Q-27-20-52-25" fill="none" stroke="#c4de9b" stroke-width="2.5" stroke-linecap="round"/>
+    </g>
+    <g id="happy-cloud">
+      <path d="M-56 26C-88 26-96-15-65-28C-64-58-24-66-7-44C12-67 49-52 50-28C82-33 98 4 75 23C68 31 58 34 45 34H-56Z" fill="#fcf8e8" stroke="#638477" stroke-width="3.5" stroke-linejoin="round"/>
+      <g fill="#f7a8b2">
+        <ellipse cx="-31" cy="13" rx="9" ry="5"/>
+        <ellipse cx="31" cy="13" rx="9" ry="5"/>
+      </g>
+      <g fill="#455f53">
+        <circle cx="-17" r="5"/>
+        <circle cx="17" r="5"/>
+      </g>
+      <path d="M-17 12Q0 31 17 12" fill="none" stroke="#455f53" stroke-width="4.5" stroke-linecap="round"/>
+    </g>
   </defs>
   <path fill="url(#sky)" d="M0 0h1600v589H0z"/>
   <g transform="translate(1225 105)">
@@ -41,6 +71,10 @@
     <path d="M-25 12Q0 41 25 12" fill="none" stroke="#56624b" stroke-width="5" stroke-linecap="round"/>
   </g>
   <path d="M0 320 140 198 264 245 363 112 454 213 598 145 772 277 953 153 1137 276 1273 167 1420 274 1600 199V589H0Z" fill="#81958a"/>
+  <g fill="none" stroke="#455f53" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M365 127 356 147 371 159 356 178 365 192 356 212" stroke-width="5"/>
+    <path d="M356 178 340 186 335 198" stroke-width="3.5"/>
+  </g>
   <path d="M0 364 206 247 358 292 520 193 727 339 894 231 1082 302 1223 258 1422 342 1600 286V589H0Z" fill="#627e70"/>
   <path d="M0 365 155 286 312 338 477 248 623 307 800 260 968 327 1107 289 1306 364 1446 332 1600 367V589H0Z" fill="url(#land)"/>
   <g clip-path="url(#terrain)">
@@ -52,6 +86,38 @@
       <path d="M-40 506Q110 413 280 477T605 462T945 468T1270 501T1640 483"/>
       <path d="M-40 539Q110 446 280 510T605 495T945 501T1270 534T1640 516"/>
     </g>
+  </g>
+  <g>
+    <g fill="none">
+      <path d="M623 290A177 177 0 0 1 977 290" stroke="#294b40" stroke-width="116"/>
+      <g stroke-width="18">
+        <path d="M578 290A222 222 0 0 1 1022 290" stroke="#f15c79"/>
+        <path d="M596 290A204 204 0 0 1 1004 290" stroke="#ff9c55"/>
+        <path d="M614 290A186 186 0 0 1 986 290" stroke="#f5da69"/>
+        <path d="M632 290A168 168 0 0 1 968 290" stroke="#72d1a0"/>
+        <path d="M650 290A150 150 0 0 1 950 290" stroke="#6dabed"/>
+        <path d="M668 290A132 132 0 0 1 932 290" stroke="#b087eb"/>
+      </g>
+    </g>
+    <use href="#happy-cloud" transform="translate(590 285) rotate(-4)"/>
+    <use href="#happy-cloud" transform="translate(1010 285) rotate(4)"/>
+  </g>
+  <g>
+    <g fill="none" stroke-linecap="round">
+      <path d="M1183 568C1160 531 1222 506 1185 455M1338 570C1290 519 1355 474 1335 395M1465 570C1508 534 1457 491 1490 446" stroke="#223f36" stroke-width="13"/>
+      <path d="M1183 568C1160 531 1222 506 1185 455M1338 570C1290 519 1355 474 1335 395M1465 570C1508 534 1457 491 1490 446" stroke="#84b887" stroke-width="7"/>
+    </g>
+    <g color="#91c58e">
+      <use href="#flower-leaf" transform="translate(1186 536)"/>
+      <use href="#flower-leaf" transform="translate(1195 510) rotate(135) scale(.8)"/>
+      <use href="#flower-leaf" transform="translate(1321 521) scale(1.1)"/>
+      <use href="#flower-leaf" transform="translate(1333 475) rotate(135)"/>
+      <use href="#flower-leaf" transform="translate(1486 523)"/>
+      <use href="#flower-leaf" transform="translate(1478 552) rotate(145) scale(.9)"/>
+    </g>
+    <use href="#psychedelic-flower" transform="translate(1185 455) rotate(18) scale(.68)"/>
+    <use href="#psychedelic-flower" transform="translate(1335 395) rotate(-12) scale(1.05)"/>
+    <use href="#psychedelic-flower" transform="translate(1490 446) rotate(16) scale(.82)"/>
   </g>
   <text x="62" y="500" fill="#fffdf4" stroke="#203d36" stroke-width="7" paint-order="stroke" font-family="system-ui, sans-serif" font-size="153" font-weight="900" letter-spacing="-7">Merged Lands</text>
   <text x="68" y="555" fill="#e2ecdf" font-family="system-ui, sans-serif" font-size="31" letter-spacing="2">LANDSCAPE MERGING FOR OPENMW</text>
