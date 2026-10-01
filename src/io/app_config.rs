@@ -9,9 +9,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const CONFIG_FILE_NAME: &str = "merged_lands.toml";
 const DEFAULT_GENERATED_OUTPUT_DIR: &str = "default_data_local";
-const DEFAULT_IGNORED_PLUGINS: [&str; 6] = [
+const DEFAULT_IGNORED_PLUGINS: [&str; 7] = [
     "delta-merged.omwaddon",
     "deleted_groundcover.omwaddon",
+    "groundcover.omwaddon",
     "S3LightFixes.omwaddon",
     "OMWLLFMod.omwaddon",
     "merged.omwaddon",

@@ -115,6 +115,7 @@ First-run defaults exclude these generated or unrelated plugins:
 ignore_plugins = [
     "delta-merged.omwaddon",
     "deleted_groundcover.omwaddon",
+    "groundcover.omwaddon",
     "S3LightFixes.omwaddon",
     "OMWLLFMod.omwaddon",
     "merged.omwaddon",

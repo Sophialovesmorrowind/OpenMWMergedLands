@@ -121,6 +121,7 @@ expensive or unhelpful to parse:
 ignore_plugins = [
     "delta-merged.omwaddon",
     "deleted_groundcover.omwaddon",
+    "groundcover.omwaddon",
     "S3LightFixes.omwaddon",
     "OMWLLFMod.omwaddon",
     "merged.omwaddon",
