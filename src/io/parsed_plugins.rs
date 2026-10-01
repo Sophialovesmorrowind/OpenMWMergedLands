@@ -844,20 +844,10 @@ mod tests {
     use std::fs;
     use std::path::Path;
     use std::thread;
-    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+    use std::time::Duration;
 
     fn create_temp_data_dir() -> std::path::PathBuf {
-        let unique = format!(
-            "merged_lands_test_{}_{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("clock before unix epoch")
-                .as_nanos()
-        );
-        let dir = std::env::temp_dir().join(unique);
-        fs::create_dir_all(&dir).expect("create temp dir");
-        dir
+        crate::test_support::create_temp_dir("merged_lands_test")
     }
 
     fn create_empty_file(path: &Path) {

@@ -274,31 +274,15 @@ mod tests {
     use crate::land::terrain_map::{LandData, Vec2};
     use crate::land::textures::{IndexVTEX, KnownTextures, RemappedTextures};
     use crate::merge::relative_terrain_map::RelativeTerrainMap;
+    use crate::test_support::create_temp_dir as unique_temp_dir;
     use crate::{Landmass, LandmassDiff};
     use std::collections::HashMap;
     use std::fs;
-    use std::path::PathBuf;
     use std::sync::Arc;
-    use std::time::{SystemTime, UNIX_EPOCH};
     use tes3::esp::{Landscape, LandscapeFlags, ObjectFlags, Plugin, TES3Object, VertexNormals};
 
     fn plugin(name: &str) -> Arc<ParsedPlugin> {
         Arc::new(ParsedPlugin::empty(name))
-    }
-
-    fn unique_temp_dir(name: &str) -> PathBuf {
-        let unique = format!(
-            "{}_{}_{}",
-            name,
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("clock before unix epoch")
-                .as_nanos()
-        );
-        let dir = std::env::temp_dir().join(unique);
-        fs::create_dir_all(&dir).expect("create temp dir");
-        dir
     }
 
     fn fixture_land(coords: (i32, i32), base_height: i32) -> Landscape {
@@ -399,16 +383,7 @@ mod tests {
 
     #[test]
     fn to_master_record_returns_file_size_for_existing_plugin() {
-        let unique = format!(
-            "merged_lands_master_size_{}_{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("clock before unix epoch")
-                .as_nanos()
-        );
-        let dir = std::env::temp_dir().join(unique);
-        fs::create_dir_all(&dir).expect("create temp dir");
+        let dir = unique_temp_dir("merged_lands_master_size");
         let plugin_name = "size_test.esp";
         let file_path = dir.join(plugin_name);
         fs::write(&file_path, [1u8, 2, 3, 4, 5]).expect("write plugin file");
@@ -422,8 +397,7 @@ mod tests {
 
     #[test]
     fn to_master_record_returns_zero_when_plugin_is_missing() {
-        let dir = std::env::temp_dir().join("merged_lands_missing_master");
-        fs::create_dir_all(&dir).expect("create temp dir");
+        let dir = unique_temp_dir("merged_lands_missing_master");
 
         let record = to_master_record(&DataDirs::single(dir.clone()), "missing.esp".to_string());
         assert_eq!(record.1, 0);

@@ -393,10 +393,10 @@ mod tests {
     use crate::land::landscape_diff::LandscapeDiff;
     use crate::land::terrain_map::Vec2;
     use crate::merge::relative_terrain_map::RelativeTerrainMap;
+    use crate::test_support::create_temp_dir;
     use std::collections::{HashMap, HashSet};
     use std::fs;
     use std::sync::Arc;
-    use std::time::{SystemTime, UNIX_EPOCH};
     use tes3::esp::ObjectFlags;
 
     #[test]
@@ -413,14 +413,7 @@ mod tests {
 
     #[test]
     fn conflict_image_preserves_changed_colors_and_unchanged_black_pixels() {
-        let output_dir = std::env::temp_dir().join(format!(
-            "merged_lands_images_colors_{}_{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("clock before unix epoch")
-                .as_nanos()
-        ));
+        let output_dir = create_temp_dir("merged_lands_images_colors");
         let mut lhs = RelativeTerrainMap::<i32, 4>::empty([[100; 4]; 4]);
         let mut rhs = RelativeTerrainMap::<i32, 4>::empty([[100; 4]; 4]);
         lhs.set_value(Index2D::new(0, 0), 110);
@@ -459,15 +452,7 @@ mod tests {
 
     #[test]
     fn save_landmass_images_skips_plugin_land_missing_from_merged_output() {
-        let unique = format!(
-            "merged_lands_images_missing_{}_{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("clock before unix epoch")
-                .as_nanos()
-        );
-        let output_dir = std::env::temp_dir().join(unique);
+        let output_dir = create_temp_dir("merged_lands_images_missing");
 
         let plugin = Arc::new(ParsedPlugin::empty("plugin.esp"));
         let reference = LandmassDiff {

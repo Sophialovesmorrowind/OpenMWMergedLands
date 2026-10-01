@@ -38,6 +38,8 @@ mod land;
 mod merge;
 mod repair;
 mod term_style;
+#[cfg(test)]
+mod test_support;
 
 const OPENMW_LOGO_ASCII: &str = include_str!("../assets/openmw-logo-ascii.txt");
 const DEFAULT_OPENMW_OUTPUT_FILE: &str = "Merged Lands.omwaddon";
@@ -1430,32 +1432,17 @@ mod tests {
     use crate::land::textures::IndexVTEX;
     use crate::merge::relative_terrain_map::{IsModified, RelativeTerrainMap};
     use crate::repair::cleaning::clean_landmass_diff;
+    use crate::test_support::create_temp_dir as unique_temp_dir;
     use clap::Parser;
     use std::fmt::Write;
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
     use std::thread;
-    use std::time::{SystemTime, UNIX_EPOCH};
     use tes3::esp::{
         Header, Landscape, LandscapeFlags, LandscapeTexture, ObjectFlags, Plugin, TES3Object,
         TextureIndices, VertexColors, VertexNormals,
     };
-
-    fn unique_temp_dir(name: &str) -> PathBuf {
-        let unique = format!(
-            "{}_{}_{}",
-            name,
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("clock before unix epoch")
-                .as_nanos()
-        );
-        let dir = std::env::temp_dir().join(unique);
-        fs::create_dir_all(&dir).expect("create temp dir");
-        dir
-    }
 
     fn write_plugin_file(
         path: &Path,
