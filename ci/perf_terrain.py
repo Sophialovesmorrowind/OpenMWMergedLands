@@ -256,10 +256,11 @@ fn main() {
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--toolchain", default="stable")
+    parser.add_argument("--toolchain", help="Override the repository's pinned Rust toolchain")
     parser.add_argument("--debug-deps", action="store_true", help="Reuse debug dependencies; harness is still optimized")
     parser.add_argument("--reuse-artifacts", action="store_true", help="Skip Cargo; requires the most recently built artifacts to use the same toolchain")
     args = parser.parse_args()
+    toolchain_args = [f"+{args.toolchain}"] if args.toolchain else []
     root = Path(__file__).resolve().parents[1]
     perf = root / "target/perf_sweep/terrain"
     perf.mkdir(parents=True, exist_ok=True)
@@ -272,7 +273,7 @@ def main():
                 parser.error(f"Missing {name} artifacts in {deps}; omit --reuse-artifacts")
             libraries[name] = max(candidates, key=lambda path: path.stat().st_mtime)
     else:
-        command = ["cargo", f"+{args.toolchain}", "build", "--locked", "--message-format=json"]
+        command = ["cargo", *toolchain_args, "build", "--locked", "--message-format=json"]
         if not args.debug_deps:
             command.append("--release")
         with subprocess.Popen(command, cwd=root, stdout=subprocess.PIPE, text=True) as process:
@@ -287,13 +288,13 @@ def main():
     source = perf / "bench.rs"
     escaped_root = str(root).replace("\\", "\\\\").replace('"', '\\"')
     source.write_text(SOURCE.replace("@ROOT@", escaped_root), encoding="utf-8")
-    command = ["rustc", f"+{args.toolchain}", "--edition", "2024", "-C", "opt-level=3", "-L", f"dependency={deps}"]
+    command = ["rustc", *toolchain_args, "--edition", "2024", "-C", "opt-level=3", "-L", f"dependency={deps}"]
     for name in ["anyhow", "bitflags", "const_default", "log", "num_traits", "tes3"]:
         command.extend(["--extern", f"{name}={libraries[name]}"])
     binary = perf / "bench"
     command.extend([str(source), "-o", str(binary)])
     subprocess.run(command, cwd=root, check=True)
-    subprocess.run(["rustc", f"+{args.toolchain}", "--version"], check=True)
+    subprocess.run(["rustc", *toolchain_args, "--version"], cwd=root, check=True)
     print("Optimized synthetic benchmarks; median of 7 alternating runs; warmed fallback cache.", flush=True)
     subprocess.run([str(binary)], check=True)
 

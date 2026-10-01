@@ -295,8 +295,10 @@ handling. Parsing does not edit config files or create directories. See the
 
 ### Builds and releases
 
-[The GitHub Actions workflow](.github/workflows/release.yaml) runs formatting, strict Clippy,
-package tests, and the Rust tests on the minimum supported Rust 1.88.0. It builds Linux x86-64
+[The GitHub Actions workflow](.github/workflows/release.yaml) uses the exact Rust version in
+[`rust-toolchain.toml`](rust-toolchain.toml) for checks and release builds, matching local Cargo
+commands. The crate requires Rust 1.99.0. CI logs compiler and Cargo versions and runs formatting,
+strict Clippy and package tests. It builds Linux x86-64
 and ARM64, macOS Intel and Apple Silicon, Windows x86-64, and Android ARM64, matching GoCoverify's
 platform set. Desktop builds run tests and the CLI help command on native runners; Android is
 cross-compiled with the NDK and is not device-tested. Linux packages are built on Ubuntu 24.04

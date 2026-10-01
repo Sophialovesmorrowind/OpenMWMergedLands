@@ -164,8 +164,8 @@ python3 ci/perf_repair.py
 The repair benchmark excludes fixture creation and cell cloning and prints
 repair counts plus checksums covering every height/normal value and delta.
 The terrain benchmark asserts complete normal-grid equality against frozen
-pre-sweep calculations. Run `ci/perf_terrain.py --toolchain 1.88.0` to compare
-the minimum supported compiler separately.
+pre-sweep calculations and defaults to the repository's pinned toolchain.
+Historical Rust 1.88 measurements above predate the current Rust 1.99 requirement.
 
 The startup smoke uses a terminal for stdin without supplying input:
 

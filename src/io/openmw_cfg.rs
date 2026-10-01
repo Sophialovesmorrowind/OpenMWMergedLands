@@ -333,7 +333,7 @@ mod tests {
             &fixture.paths,
         )
         .expect("layer");
-        assert!(layer.data.is_empty());
+        assert_eq!(layer.data, Vec::<PathBuf>::new());
         assert_eq!(layer.content, ["\"Quoted.esp\"", "Raw.esp"]);
     }
 
@@ -435,8 +435,8 @@ mod tests {
         fixture.write("openmw.cfg", "content=Old.esm\ndata=.\nconfig=profile\n");
         fixture.write("profile/openmw.cfg", "replace=data\nreplace=content\n");
         let loaded = fixture.load();
-        assert!(loaded.content.is_empty());
-        assert!(loaded.data_directories.is_empty());
+        assert_eq!(loaded.content, Vec::<String>::new());
+        assert_eq!(loaded.data_directories, Vec::<PathBuf>::new());
         assert_eq!(loaded.data_local, fixture.paths.user_data.join("data"));
         assert!(
             !loaded.data_local.exists(),

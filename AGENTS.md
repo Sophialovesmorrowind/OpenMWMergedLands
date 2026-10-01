@@ -2,7 +2,7 @@
 
 ## Repo Reality Check (verify first)
 - This snapshot is a single Rust crate (`Cargo.toml`) named `merged_lands`.
-- `rust-toolchain.toml` pins `stable`; `Cargo.toml` requires Rust `1.88.0`.
+- `rust-toolchain.toml` pins Rust `1.99.0` with rustfmt and Clippy for local work and CI; `Cargo.toml` requires Rust `1.99.0`.
 - OpenMW config parsing and discovery live in `src/io/openmw_cfg.rs` and `src/io/openmw_paths.rs`; there is no external config parser dependency.
 - Current tracked tree includes `src/`, so normal Rust checks should work.
 - The current checkout is OpenMW-first: default mode reads `openmw.cfg`; use `--vanilla` for classic Morrowind behavior.

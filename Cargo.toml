@@ -2,7 +2,7 @@
 name = "merged_lands"
 version = "0.2.0"
 edition = "2024"
-rust-version = "1.88.0"
+rust-version = "1.99.0"
 
 [dependencies]
 # Command line interface.

@@ -2457,7 +2457,7 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert!(names.is_empty());
+        assert_eq!(names, Vec::<&str>::new());
     }
 
     #[test]
@@ -2501,7 +2501,7 @@ mod tests {
             })
             .collect();
         coords.sort_unstable();
-        assert!(coords.is_empty());
+        assert_eq!(coords, Vec::<(i32, i32)>::new());
 
         let header = merged
             .objects
@@ -2521,6 +2521,6 @@ mod tests {
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
-        assert!(master_names.is_empty());
+        assert_eq!(master_names, Vec::<&str>::new());
     }
 }
