@@ -1,6 +1,8 @@
 # Changelog
 
-## Recent changes
+#### 1.1
+
+##### Recent changes
 
 - Added a default, plugin-specific exception for TR's four Hunza Camp cells.
 - Preserved original TR heights when earlier plugins supply texture-only LAND.
@@ -10,7 +12,9 @@
 - Fixed cross-platform path and filename-case assertions.
 - Pinned matching Rust and Clippy versions for local work and CI.
 
-## OpenMW support
+#### 1.0
+
+##### OpenMW support
 
 - OpenMW mode is the default; `--vanilla` selects classic Morrowind behavior.
 - Configuration discovery follows OpenMW's engine and user locations.
