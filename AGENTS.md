@@ -3,6 +3,9 @@
 ## Repo Reality Check (verify first)
 - This snapshot is a single Rust crate (`Cargo.toml`) named `merged_lands`.
 - `rust-toolchain.toml` pins Rust `1.99.0` with rustfmt and Clippy for local work and CI; `Cargo.toml` requires Rust `1.99.0`.
+- Before reporting lint results, check the current stable Rust release on the official Rust release site and compare it with the repository pin. Clippy ships with that Rust toolchain; it is not selected independently.
+- Run `rustup show active-toolchain`, `rustc --version --verbose`, and `cargo clippy --version` to confirm the local Rust/Clippy release matches the repository pin and the versions logged by CI. A locally installed `stable` channel can be stale; its name alone does not establish a match.
+- When updating Rust, update `rust-toolchain.toml` and `Cargo.toml` together, keep CI using the repository toolchain, and rerun the core checks with that exact version.
 - OpenMW config parsing and discovery live in `src/io/openmw_cfg.rs` and `src/io/openmw_paths.rs`; there is no external config parser dependency.
 - Current tracked tree includes `src/`, so normal Rust checks should work.
 - The current checkout is OpenMW-first: default mode reads `openmw.cfg`; use `--vanilla` for classic Morrowind behavior.

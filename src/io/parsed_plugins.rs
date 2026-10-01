@@ -960,21 +960,26 @@ mod tests {
         let high = root.join("high");
         fs::create_dir_all(low.join("sub dir")).expect("low directory");
         fs::create_dir_all(high.join("Sub Dir")).expect("high directory");
-        create_empty_file(&low.join("plugin.esp"));
-        create_empty_file(&low.join("sub dir/nested.esp"));
-        create_empty_file(&high.join("Plugin.ESP"));
-        create_empty_file(&high.join("Sub Dir/Nested.ESP"));
+        for name in ["plugin.esp", "sub dir/nested.esp"] {
+            fs::write(low.join(name), "lower priority").expect("low plugin");
+        }
+        for name in ["Plugin.ESP", "Sub Dir/Nested.ESP"] {
+            fs::write(high.join(name), "higher priority").expect("high plugin");
+        }
 
         for warm_cache in [false, true] {
             let dirs = DataDirs::from_ordered(vec![low.clone(), high.clone()]).expect("data dirs");
             if warm_cache {
                 assert!(dirs.resolve("missing.mergedlands.toml").is_none());
             }
-            assert_eq!(dirs.resolve("plugin.esp"), Some(high.join("Plugin.ESP")));
-            assert_eq!(
-                dirs.resolve("sub dir/nested.esp"),
-                Some(high.join("Sub Dir/Nested.ESP"))
-            );
+            for name in ["plugin.esp", "sub dir/nested.esp"] {
+                let resolved = dirs.resolve(name).expect("resolve higher-priority plugin");
+                assert_path_eq_ignore_ascii_case(&resolved, &high.join(name));
+                assert_eq!(
+                    fs::read_to_string(resolved).expect("read resolved plugin"),
+                    "higher priority"
+                );
+            }
         }
 
         fs::remove_dir_all(root).expect("cleanup temp dir");

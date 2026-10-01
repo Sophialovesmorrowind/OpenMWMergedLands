@@ -335,7 +335,7 @@ mod tests {
         assert_eq!(
             config_file_path(&paths.discover(&|key| environment.get(key).cloned()))
                 .expect("resolve directory"),
-            fs::canonicalize(first.join("openmw.cfg")).expect("canonical")
+            first.join("openmw.cfg")
         );
         environment.clear();
         assert_eq!(
