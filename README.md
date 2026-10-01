@@ -84,6 +84,7 @@ By default, `merged_lands.toml` is created in the same config directory OpenMW u
 | Linux | `$XDG_CONFIG_HOME/openmw` or `$HOME/.config/openmw` |
 | macOS | `$HOME/Library/Preferences/openmw` |
 | Windows | `Documents\My Games\OpenMW` |
+| Android | `/storage/emulated/0/Alpha3/config` |
 
 If the OpenMW config directory cannot be used, the tool falls back to writing `merged_lands.toml`
 next to the executable. You can override the config location with `--config-dir`.
@@ -133,6 +134,9 @@ ignore_plugins = ["Some Generated Plugin.omwaddon"]
 ignore_plugins_from_path = ["/absolute/path/to/generated/plugins"]
 # ignore_plugins_from_path = ['C:\Users\Username\Documents\My Games\OpenMW\Generated']
 
+# Exterior cell coordinates [x, y] to exclude from every plugin and the merged output.
+cell_ignore = [[-2, 3], [0, 0]]
+
 # Managed by the tool. Used to avoid parsing previous outputs if they still exist.
 # Fresh configs use "default_data_local" until the first successful run records the real path.
 # Relative paths are resolved relative to the directory containing merged_lands.toml.
@@ -142,7 +146,24 @@ generated_output_dir = "default_data_local"
 
 # Managed by the tool. Output plugin names previously written to generated_output_dir.
 generated_output_files = ["Merged Lands.omwaddon"]
+
+# Skip only the named plugin's changes to these cells.
+# Keep this table after the top-level settings above.
+[cell_ignore_by_plugin]
+"Some Landscape Mod.esp" = [[4, -5], [6, 7]]
+"Some Expansion.esm" = [[8, 9]]
 ```
+
+Cells use exterior grid coordinates, not cell names. Both settings are optional and default to
+empty. `cell_ignore` excludes the entire cell from merging, seam repair, and output.
+`cell_ignore_by_plugin` skips all terrain data from the named plugin at the listed cells while
+allowing earlier and later plugins to contribute there. Plugin filenames include their extension
+and match without regard to ASCII case; entries for plugins outside the selected load order have
+no effect. Both settings work in OpenMW and `--vanilla` modes, and global exclusions take priority.
+
+If a skipped plugin supplied the only terrain for a cell, the tool has no replacement to write;
+the original plugin still supplies that terrain in-game. Where earlier terrain exists, the merged
+output can restore it. Seam repair still applies to cells supplied by other plugins.
 
 Output directory precedence is:
 
@@ -195,8 +216,18 @@ If you do not pass any mode flag, the tool runs in OpenMW mode. Config source pr
 2. `openmw_cfg` in `merged_lands.toml`
 3. OpenMW auto-detection
 
-Auto-detection uses the same `openmw-config` behavior as OpenMW: `OPENMW_CONFIG` first,
-`OPENMW_CONFIG_DIR` next, then the platform-default config directory.
+The built-in loader checks `OPENMW_CONFIG` first (a file or directory), then searches
+`OPENMW_CONFIG_DIR` in order for the first `openmw.cfg`, then uses the platform-default
+config directory above. `OPENMW_CONFIG_DIR` is a colon-separated path list on Unix and a
+semicolon-separated list on Windows. Leading `~` is expanded for explicit paths and environment
+overrides. An invalid explicit path reports an error instead of silently selecting another config.
+
+Linux respects `XDG_CONFIG_HOME` and `XDG_DATA_HOME`. Existing Flatpak detection is retained:
+`OPENMW_CONFIG_USING_FLATPAK`, `FLATPAK_ID`, or `/.flatpak-info` selects
+`~/.var/app/<app-id>/config/openmw` and `~/.var/app/<app-id>/data/openmw`.
+The app ID comes from `OPENMW_FLATPAK_ID`, then `FLATPAK_ID`, then `org.openmw.OpenMW`.
+Windows uses the OS Documents-folder API, including redirected folders such as OneDrive.
+Android defaults to the Alpha3 directory shown above.
 
 You can still override the config path with `--openmw-cfg <PATH>`, where `<PATH>` may be either
 a directory containing `openmw.cfg` or a direct path to the file. Example:
@@ -218,6 +249,29 @@ merged_lands --openmw-cfg 'C:\Users\Username\Documents\My Games\OpenMW\openmw.cf
 
 To use classic Morrowind behavior instead, pass `--vanilla`.
 
+### Config syntax and profiles
+
+Config loading is implemented in this repository, following OpenMW's
+[configuration manager](https://github.com/OpenMW/openmw/blob/master/components/files/configurationmanager.cpp)
+and [path syntax](https://openmw.readthedocs.io/en/stable/reference/modding/paths.html).
+The selected file is the root of the chain; it can point to profile directories with `config=`.
+The loader handles nested configs, repeated/circular references, `replace=data`, `replace=content`,
+and `replace=config`. For nested ordering it follows the engine source: the first listed config
+and its descendants load before the next sibling. A missing optional config is skipped; an
+unreadable or malformed existing config reports its path and, for syntax errors, its line.
+
+Paths are relative to the file declaring them. Quoted paths use `&` to escape the next character;
+backslashes stay literal, and text after a closing path quote is ignored. Only whole lines starting
+with `#` are comments; a `#` inside a value remains part of that value. Unknown engine settings
+are ignored. Existing quoted `content="Plugin.esp"` entries remain supported for compatibility.
+
+The `?userconfig?` and `?userdata?` tokens refer to the standard platform locations, independent
+of the selected profile and `user-data=`. `?local?` uses the OpenMW executable found beside this
+tool, on `PATH`, or in the standard Windows/macOS installation location; it falls back to the
+tool's directory. `?global?` uses `/usr/share/games/openmw` on Linux and
+`/Library/Application Support/openmw` on macOS. For custom engine installation layouts, use
+explicit paths in the config. Parsing does not edit config files or create directories.
+
 ### What changes in OpenMW mode
 
 - **Data directories.** Plugins and their `.mergedlands.toml` meta files are searched across every
@@ -230,6 +284,30 @@ To use classic Morrowind behavior instead, pass `--vanilla`.
   platform-default OpenMW `data-local` path instead. Classic mode (`--vanilla`) still defaults
   to writing `Merged Lands.esp` in `--data-files-dir`.
 - **`--data-files-dir` is only used for plugin discovery in `--vanilla` mode.**
+
+### Builds and releases
+
+[The GitHub Actions workflow](.github/workflows/release.yaml) runs formatting, strict Clippy,
+package tests, and the Rust tests on the minimum supported Rust 1.88.0. It builds Linux x86-64
+and ARM64, macOS Intel and Apple Silicon, Windows x86-64, and Android ARM64, matching GoCoverify's
+platform set. Desktop builds run tests and the CLI help command on native runners; Android is
+cross-compiled with the NDK and is not device-tested. Linux packages are built on Ubuntu 24.04
+and require a compatible glibc. Android is a command-line binary for an executable app-private
+directory (for example, Termux), not an APK. Linux ARM64 provides the handheld build; no
+PortMaster launcher is bundled.
+
+Each build produces a platform ZIP containing the executable, `Conflicts/`, README, original
+MIT license, and build information, plus SHA-256 and SHA-512 checksum files. User TOML files are
+not packaged. Tagged builds verify the archives and publish them as GitHub release assets using
+the built-in token. The workflow is self-contained and needs no custom secrets.
+
+For example, to build and package Linux x86-64 locally:
+
+```sh
+cargo build --release --locked --target x86_64-unknown-linux-gnu
+python3 ci/package.py linux-amd64 x86_64-unknown-linux-gnu --version development
+python3 -m unittest discover -s ci -p 'test_*.py'
+```
 
 ### Persistent output override
 

@@ -1,5 +1,7 @@
+use crate::land::terrain_map::Vec2;
 use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
@@ -58,11 +60,15 @@ pub struct MergedLandsConfig {
     #[serde(default, alias = "ignore_plugins_from_paths", alias = "ignore_paths")]
     ignore_plugins_from_path: Vec<String>,
     #[serde(default)]
+    cell_ignore: Vec<[i32; 2]>,
+    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     generated_output_dir: Option<String>,
     #[serde(default)]
     #[serde(skip_serializing_if = "Vec::is_empty")]
     generated_output_files: Vec<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    cell_ignore_by_plugin: BTreeMap<String, Vec<[i32; 2]>>,
 }
 
 impl MergedLandsConfig {
@@ -234,6 +240,23 @@ impl MergedLandsConfig {
         &self.ignore_plugins
     }
 
+    /// Returns exterior cells to skip for this plugin, combining global and plugin-specific
+    /// rules. Plugin names are matched without regard to ASCII case.
+    #[must_use]
+    pub fn ignored_cells_for_plugin(&self, plugin_name: &str) -> HashSet<Vec2<i32>> {
+        self.cell_ignore
+            .iter()
+            .chain(
+                self.cell_ignore_by_plugin
+                    .iter()
+                    .filter(|(name, _)| name.eq_ignore_ascii_case(plugin_name))
+                    .flat_map(|(_, cells)| cells),
+            )
+            .copied()
+            .map(Vec2::from)
+            .collect()
+    }
+
     /// Returns ignored plugin paths, resolving relative paths against the app config directory.
     #[must_use]
     pub fn ignore_plugins_from_path(&self, config_dir: &Path) -> Vec<PathBuf> {
@@ -299,6 +322,8 @@ mod tests {
     use super::{
         AppConfigSource, CONFIG_FILE_NAME, DEFAULT_GENERATED_OUTPUT_DIR, MergedLandsConfig,
     };
+    use crate::land::terrain_map::Vec2;
+    use std::collections::HashSet;
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -534,5 +559,98 @@ mod tests {
             config.ignore_plugins_from_path(Path::new("/tmp/config")),
             vec![Path::new("/tmp/config/ignored")]
         );
+    }
+
+    #[test]
+    fn cell_ignore_defaults_to_empty_for_existing_configs() {
+        let config: MergedLandsConfig = toml::from_str("").expect("empty config should parse");
+        assert!(config.ignored_cells_for_plugin("Any.esp").is_empty());
+    }
+
+    #[test]
+    fn cell_ignore_combines_global_and_exact_case_insensitive_plugin_rules() {
+        let config: MergedLandsConfig = toml::from_str(
+            r#"
+cell_ignore = [[-2, 3], [0, 0], [-2, 3]]
+[cell_ignore_by_plugin]
+"Patch.esp" = [[4, -5], [0, 0]]
+"PATCH.ESP" = [[6, 7]]
+"Absent.esp" = [[8, 9]]
+"Empty.esp" = []
+"Patch.esp.backup" = [[10, 11]]
+"Expansion.esm" = [[12, 13]]
+"OpenMW.omwaddon" = [[14, 15]]
+"#,
+        )
+        .expect("config should parse");
+
+        let global = HashSet::from([Vec2::new(-2, 3), Vec2::new(0, 0)]);
+        assert_eq!(config.ignored_cells_for_plugin("Other.esp"), global);
+        assert_eq!(config.ignored_cells_for_plugin("Empty.esp"), global);
+        assert_eq!(
+            config.ignored_cells_for_plugin("patch.ESP"),
+            HashSet::from([
+                Vec2::new(-2, 3),
+                Vec2::new(0, 0),
+                Vec2::new(4, -5),
+                Vec2::new(6, 7),
+            ])
+        );
+        assert!(
+            config
+                .ignored_cells_for_plugin("EXPANSION.ESM")
+                .contains(&Vec2::new(12, 13))
+        );
+        assert!(
+            config
+                .ignored_cells_for_plugin("openmw.omwaddon")
+                .contains(&Vec2::new(14, 15))
+        );
+    }
+
+    #[test]
+    fn cell_ignore_rejects_invalid_coordinates() {
+        for cells in [
+            "[[1]]",
+            "[[1, 2, 3]]",
+            "[[1.5, 2.0]]",
+            "[[2147483648, 0]]",
+            "[[0, -2147483649]]",
+            r#"["Balmora"]"#,
+        ] {
+            for setting in [
+                format!("cell_ignore = {cells}"),
+                format!("[cell_ignore_by_plugin]\n\"Patch.esp\" = {cells}"),
+            ] {
+                assert!(
+                    toml::from_str::<MergedLandsConfig>(&setting).is_err(),
+                    "invalid cells should fail: {setting}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn save_preserves_cell_ignore_rules_when_recording_output() {
+        let root = unique_temp_dir("app_config_cell_ignore");
+        let mut config: MergedLandsConfig = toml::from_str(
+            r#"
+cell_ignore = [[-2, 3]]
+[cell_ignore_by_plugin]
+"Patch.esp" = [[4, -5]]
+"#,
+        )
+        .expect("config should parse");
+        config.record_generated_output(&root.join("Output"), "Merged.omwaddon");
+        config.save(&root).expect("save config");
+        let loaded = MergedLandsConfig::load(&root)
+            .expect("load config")
+            .expect("config exists");
+
+        assert_eq!(loaded.cell_ignore, config.cell_ignore);
+        assert_eq!(loaded.cell_ignore_by_plugin, config.cell_ignore_by_plugin);
+        assert_eq!(loaded.generated_output_files, ["Merged.omwaddon"]);
+
+        fs::remove_dir_all(root).expect("cleanup temp dir");
     }
 }

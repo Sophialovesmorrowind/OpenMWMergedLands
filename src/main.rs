@@ -1,5 +1,7 @@
 use crate::io::app_config::{CONFIG_FILE_NAME, MergedLandsConfig};
 use crate::io::meta_schema::{ConflictStrategy, MetaType};
+use crate::io::openmw_cfg::{OpenMWCfgSource, OpenMWConfig};
+use crate::io::openmw_paths::default_config_dir;
 use crate::io::parsed_plugins::{
     DataDirs, ParsedPlugin, ParsedPlugins, PluginFilter, PluginListSource, load_openmw_cfg,
 };
@@ -18,7 +20,6 @@ use crate::repair::seam_detection::repair_landmass_seams;
 use crate::term_style::{bold, bold_red};
 use anyhow::{Context, Result, anyhow};
 use log::{debug, error, info, trace, warn};
-use openmw_config::{OpenMWConfiguration, try_default_config_path};
 use simplelog::{
     ColorChoice, CombinedLogger, ConfigBuilder, LevelFilter, LevelPadding, TermLogger,
     TerminalMode, WriteLogger,
@@ -495,7 +496,7 @@ fn preferred_openmw_config_dir(cli: &Cli) -> Option<PathBuf> {
     cli.openmw_cfg
         .as_ref()
         .map(|path| openmw_cfg_path_to_dir(Path::new(path)))
-        .or_else(|| try_default_config_path().ok())
+        .or_else(|| default_config_dir().ok())
 }
 
 fn openmw_cfg_path_to_dir(path: &Path) -> PathBuf {
@@ -621,15 +622,11 @@ fn prompted_path(input: &str) -> Option<PathBuf> {
 }
 
 fn explicit_openmw_cfg_path(path: PathBuf) -> Result<PathBuf> {
-    OpenMWConfiguration::new(Some(path))
-        .map(|config| config.root_config_file().to_path_buf())
-        .map_err(|error| anyhow!("Failed to load openmw.cfg: {error:?}"))
+    OpenMWConfig::load(OpenMWCfgSource::Path(path)).map(|config| config.root_config_file)
 }
 
 fn autodetect_openmw_cfg_path() -> Result<PathBuf> {
-    OpenMWConfiguration::from_env()
-        .map(|config| config.root_config_file().to_path_buf())
-        .map_err(|error| anyhow!("Failed to load openmw.cfg: {error:?}"))
+    OpenMWConfig::load(OpenMWCfgSource::Default).map(|config| config.root_config_file)
 }
 
 fn wait_for_user_exit(wait_for_exit: bool) {
@@ -775,7 +772,7 @@ fn merge_all(cli: &Cli) -> Result<()> {
     phase_start = Instant::now();
 
     let (reference_landmass, modded_landmasses, raw_load_order_landmass) =
-        create_reference_and_modded_landmasses(&parsed_plugins, &mut known_textures);
+        create_reference_and_modded_landmasses(&parsed_plugins, &mut known_textures, &app_config);
     debug!(
         "Built reference and modded landmasses in {:?}",
         phase_start.elapsed()
@@ -1110,31 +1107,6 @@ fn merge_tes3_landscape(lhs: &Landscape, rhs: &Landscape) -> Landscape {
     land
 }
 
-/// Creates a single [Landmass] by calling [`merge_tes3_landscape`] on all `landmasses`.
-fn merge_tes3_landmasses(
-    plugin: &Arc<ParsedPlugin>,
-    landmasses: impl Iterator<Item = Landmass>,
-) -> Landmass {
-    let mut merged_landmass = Landmass::new(plugin.clone());
-
-    for landmass in landmasses {
-        for (coords, land) in &landmass.land {
-            let merged_land = if let Some(existing) = merged_landmass.land.get(coords) {
-                merge_tes3_landscape(existing, land)
-            } else {
-                land.clone()
-            };
-
-            merged_landmass.land.insert(*coords, merged_land);
-            merged_landmass
-                .plugins
-                .insert(*coords, landmass.plugin.clone());
-        }
-    }
-
-    merged_landmass
-}
-
 /// Given a [`ParsedPlugin`] and a specific [Landscape], returns [`LandData`] representing
 /// what should be used when creating or merging a [`LandscapeDiff`].
 fn find_allowed_data(plugin: &ParsedPlugin, land: &Landscape) -> LandData {
@@ -1239,6 +1211,28 @@ fn find_landmass_diff(landmass: &Landmass, reference: &Landmass) -> LandmassDiff
     landmass_diff
 }
 
+/// Removes ignored cells before building diffs, references, or repairing seams.
+fn remove_ignored_cells(landmass: &mut Landmass, config: &MergedLandsConfig) {
+    let ignored_cells = config.ignored_cells_for_plugin(&landmass.plugin.name);
+    if ignored_cells.is_empty() {
+        return;
+    }
+
+    landmass.land.retain(|coords, _| {
+        let included = !ignored_cells.contains(coords);
+        if !included {
+            debug!(
+                "({:>4}, {:>4}) | {:<50} | Skipping ignored cell",
+                coords.x, coords.y, landmass.plugin.name
+            );
+        }
+        included
+    });
+    landmass
+        .plugins
+        .retain(|coords, _| !ignored_cells.contains(coords));
+}
+
 /// Builds the initial reference landmass and the plugin diffs used for the final merge.
 ///
 /// Plugin diffs are computed against the rolling winning LAND state from load order. That keeps
@@ -1247,16 +1241,22 @@ fn find_landmass_diff(landmass: &Landmass, reference: &Landmass) -> LandmassDiff
 fn create_reference_and_modded_landmasses(
     parsed_plugins: &ParsedPlugins,
     known_textures: &mut KnownTextures,
+    config: &MergedLandsConfig,
 ) -> (Arc<Landmass>, Vec<LandmassDiff>, Arc<Landmass>) {
-    let reference_landmass = create_tes3_landmass(
-        "ReferenceLandmass.esp",
-        parsed_plugins.masters.iter(),
-        known_textures,
-    );
-
-    // TODO(dvd): #feature Support "ignored" maps for hiding differences that we don't care about.
-    let mut rolling_reference = reference_landmass.clone();
+    let mut reference_landmass =
+        Landmass::new(Arc::new(ParsedPlugin::empty("ReferenceLandmass.esp")));
     let mut raw_load_order_landmass = reference_landmass.clone();
+
+    for master in &parsed_plugins.masters {
+        let Some(mut landmass) = try_create_landmass(master, known_textures) else {
+            continue;
+        };
+        merge_tes3_landmass_into(&mut raw_load_order_landmass, &landmass);
+        remove_ignored_cells(&mut landmass, config);
+        merge_tes3_landmass_into(&mut reference_landmass, &landmass);
+    }
+
+    let mut rolling_reference = reference_landmass.clone();
     let mut modded_landmasses = Vec::new();
 
     for plugin in &parsed_plugins.plugins {
@@ -1265,13 +1265,20 @@ fn create_reference_and_modded_landmasses(
             continue;
         }
 
-        let Some(landmass) = try_create_landmass(plugin, known_textures) else {
+        let Some(mut landmass) = try_create_landmass(plugin, known_textures) else {
             continue;
         };
 
+        // Cleanup must compare against what the game actually loads, including ignored
+        // changes, so that output needed to restore an earlier plugin's terrain is retained.
+        merge_tes3_landmass_into(&mut raw_load_order_landmass, &landmass);
+        remove_ignored_cells(&mut landmass, config);
+        if landmass.land.is_empty() {
+            continue;
+        }
+
         modded_landmasses.push(find_landmass_diff(&landmass, &rolling_reference));
         merge_allowed_landmass_into(&mut rolling_reference, &landmass);
-        merge_tes3_landmass_into(&mut raw_load_order_landmass, &landmass);
     }
 
     (
@@ -1431,18 +1438,6 @@ fn merge_landmass_into(merged: &mut LandmassDiff, plugin: &LandmassDiff) {
             merged.land.insert(*coords, merged_land);
         }
     }
-}
-
-/// Creates a [Landmass] from `parsed_plugins` and updates [`KnownTextures`].
-fn create_tes3_landmass<'a>(
-    plugin_name: &str,
-    parsed_plugins: impl Iterator<Item = &'a Arc<ParsedPlugin>>,
-    known_textures: &mut KnownTextures,
-) -> Landmass {
-    let plugin = Arc::new(ParsedPlugin::empty(plugin_name));
-    let master_landmasses =
-        parsed_plugins.filter_map(|esm| try_create_landmass(esm, known_textures));
-    merge_tes3_landmasses(&plugin, master_landmasses)
 }
 
 /// Creates a [`LandmassDiff`] representing a set of empty [`LandscapeDiff`] for the `reference` [Landmass].
@@ -1617,13 +1612,20 @@ mod tests {
     fn merge_test_plugins(
         plugins: Vec<Arc<ParsedPlugin>>,
     ) -> (crate::LandmassDiff, Arc<crate::Landmass>) {
+        merge_test_plugins_with_config(plugins, &MergedLandsConfig::default())
+    }
+
+    fn merge_test_plugins_with_config(
+        plugins: Vec<Arc<ParsedPlugin>>,
+        config: &MergedLandsConfig,
+    ) -> (crate::LandmassDiff, Arc<crate::Landmass>) {
         let parsed_plugins = ParsedPlugins {
             masters: Vec::new(),
             plugins,
         };
         let mut known_textures = crate::land::textures::KnownTextures::new();
         let (reference_landmass, modded_landmasses, raw_load_order_landmass) =
-            create_reference_and_modded_landmasses(&parsed_plugins, &mut known_textures);
+            create_reference_and_modded_landmasses(&parsed_plugins, &mut known_textures, config);
         let mut merged_lands = create_merged_lands_from_reference(&reference_landmass);
 
         for modded_landmass in &modded_landmasses {
@@ -1897,6 +1899,206 @@ mod tests {
     }
 
     #[test]
+    fn cell_ignore_by_plugin_does_not_advance_reference_or_block_later_plugins() {
+        run_with_large_stack(|| {
+            let config: MergedLandsConfig =
+                toml::from_str("[cell_ignore_by_plugin]\n\"A.esp\" = [[0, 0]]")
+                    .expect("parse config");
+            let ignored = parsed_plugin_with_land(
+                "A.esp",
+                fixture_land((0, 0), 96, None),
+                PluginMeta::default(),
+            );
+            let (merged, _) = merge_test_plugins_with_config(vec![ignored.clone()], &config);
+            assert!(
+                merged.land.is_empty(),
+                "ignored-only cell has no replacement terrain"
+            );
+
+            let later = parsed_plugin_with_land(
+                "B.esp",
+                fixture_land((0, 0), 96, None),
+                PluginMeta::default(),
+            );
+            let (merged, _) = merge_test_plugins_with_config(vec![ignored, later], &config);
+            let land = merged
+                .land
+                .get(&crate::Vec2::new(0, 0))
+                .expect("later plugin cell");
+            assert_eq!(
+                land.height_map
+                    .as_ref()
+                    .expect("heights")
+                    .get_value(Index2D::new(1, 1)),
+                104
+            );
+            assert!(
+                land.plugins
+                    .iter()
+                    .all(|(plugin, _)| plugin.name == "B.esp")
+            );
+        });
+    }
+
+    #[test]
+    fn cell_ignore_by_plugin_preserves_earlier_terrain_during_cleanup() {
+        run_with_large_stack(|| {
+            let config: MergedLandsConfig =
+                toml::from_str("[cell_ignore_by_plugin]\n\"Patch.esp\" = [[0, 0]]")
+                    .expect("parse config");
+            let plugins = [("Base.esp", 0), ("Patch.esp", 256)]
+                .into_iter()
+                .map(|(name, height)| {
+                    parsed_plugin_with_land(
+                        name,
+                        fixture_land((0, 0), height, None),
+                        PluginMeta::default(),
+                    )
+                })
+                .collect();
+            let (mut merged, loaded) = merge_test_plugins_with_config(plugins, &config);
+            clean_landmass_diff(&mut merged, &loaded);
+
+            let land = merged
+                .land
+                .get(&crate::Vec2::new(0, 0))
+                .expect("restored cell");
+            assert_eq!(
+                land.height_map
+                    .as_ref()
+                    .expect("heights")
+                    .get_value(Index2D::new(32, 32)),
+                0
+            );
+        });
+    }
+
+    #[test]
+    fn e2e_cell_ignore_preserves_other_plugins_and_excludes_global_cells() {
+        for mode in ["openmw", "vanilla-explicit", "vanilla-ini"] {
+            for extension in ["esp", "esm"] {
+                check_cell_ignore_merge(mode, extension);
+            }
+        }
+    }
+
+    fn check_cell_ignore_merge(mode: &str, extension: &str) {
+        let root = unique_temp_dir("e2e_cell_ignore");
+        let data_files = root.join("Data Files");
+        let output_dir = root.join("Output");
+        let config_dir = root.join("Config");
+        let merged_lands_dir = root.join("MergedLands");
+        for dir in [
+            &data_files,
+            &output_dir,
+            &config_dir,
+            &merged_lands_dir.join("Conflicts"),
+        ] {
+            fs::create_dir_all(dir).expect("create fixture directory");
+        }
+
+        let patch_name = format!("Patch.{extension}");
+        for (name, scoped_height, color) in [
+            ("Base.esm", 0, Vec3::new(10, 20, 30)),
+            (patch_name.as_str(), 256, Vec3::new(90, 100, 110)),
+        ] {
+            let lands = [((0, 0), scoped_height), ((1, 0), 128), ((2, 0), 4096)]
+                .into_iter()
+                .map(|(coords, height)| fixture_land_with_vertex_color(coords, height, color))
+                .collect();
+            write_plugin_file(&data_files.join(name), name, lands, vec![], vec![]);
+        }
+
+        let config = format!(
+            "cell_ignore = [[2, 0]]\n[cell_ignore_by_plugin]\n\"patch.{extension}\" = [[0, 0]]\n\"Absent.esp\" = [[1, 0]]\n"
+        );
+        fs::write(config_dir.join(CONFIG_FILE_NAME), &config).expect("write config");
+        let mut args = vec![
+            "merged_lands".to_string(),
+            "--config-dir".to_string(),
+            config_dir.to_string_lossy().into_owned(),
+            "--merged-lands-dir".to_string(),
+            merged_lands_dir.to_string_lossy().into_owned(),
+            "--output-file-dir".to_string(),
+            output_dir.to_string_lossy().into_owned(),
+            "--output-file".to_string(),
+            "CellIgnoreOut.esp".to_string(),
+            "--sort-order".to_string(),
+            "none".to_string(),
+        ];
+        if mode == "openmw" {
+            let openmw_cfg = root.join("openmw.cfg");
+            fs::write(
+                &openmw_cfg,
+                format!(
+                    "data=\"{}\"\ndata-local=\"{}\"\ncontent=Base.esm\ncontent={patch_name}\n",
+                    data_files.to_string_lossy(),
+                    output_dir.to_string_lossy(),
+                ),
+            )
+            .expect("write openmw.cfg");
+            args.extend([
+                "--openmw-cfg".to_string(),
+                openmw_cfg.to_string_lossy().into_owned(),
+            ]);
+        } else {
+            args.extend([
+                "--vanilla".to_string(),
+                "--data-files-dir".to_string(),
+                data_files.to_string_lossy().into_owned(),
+            ]);
+            if mode == "vanilla-ini" {
+                fs::write(
+                    root.join("Morrowind.ini"),
+                    format!("[Game Files]\nGameFile0=Base.esm\nGameFile1={patch_name}\n"),
+                )
+                .expect("write ini");
+            } else {
+                args.extend(["Base.esm".to_string(), patch_name]);
+            }
+        }
+        let cli = crate::cli::Cli::try_parse_from(args).expect("parse CLI");
+        run_merge_on_worker_thread(cli).expect("merge should succeed");
+
+        let output = load_output_plugin(&output_dir.join("CellIgnoreOut.esp"));
+        let lands: Vec<_> = output.objects_of_type::<Landscape>().collect();
+        assert_eq!(
+            lands.len(),
+            2,
+            "{mode}/{extension}: only the two included cells need output"
+        );
+        assert!(lands.iter().all(|land| land.grid != (2, 0)));
+        for (coords, expected_height, expected_color) in
+            [((0, 0), 0, [10, 20, 30]), ((1, 0), 128, [90, 100, 110])]
+        {
+            let land = lands
+                .iter()
+                .find(|land| land.grid == coords)
+                .expect("included LAND");
+            let heights = crate::land::height_map::try_calculate_height_map(land).expect("heights");
+            assert_eq!(heights[32][32], expected_height);
+            assert_eq!(
+                land.vertex_colors.as_ref().expect("colors").data[32][32],
+                expected_color
+            );
+            // The globally ignored cell must not pull its neighbor's edge towards 4096.
+            if coords == (1, 0) {
+                assert_eq!(heights[32][64], 128);
+            }
+        }
+        let saved = MergedLandsConfig::load(&config_dir)
+            .expect("load saved config")
+            .expect("config");
+        let original: MergedLandsConfig = toml::from_str(&config).expect("original config");
+        let configured_plugin = format!("PATCH.{extension}");
+        assert_eq!(
+            saved.ignored_cells_for_plugin(&configured_plugin),
+            original.ignored_cells_for_plugin(&configured_plugin)
+        );
+        fs::remove_dir_all(root).expect("cleanup temp dir");
+    }
+
+    #[test]
     fn excluded_height_does_not_advance_rolling_reference() {
         run_with_large_stack(|| {
             let coords = (0, 0);
@@ -1920,8 +2122,11 @@ mod tests {
                 plugins: vec![plugin_a, plugin_b],
             };
             let mut known_textures = crate::land::textures::KnownTextures::new();
-            let (_, modded_landmasses, _) =
-                create_reference_and_modded_landmasses(&parsed_plugins, &mut known_textures);
+            let (_, modded_landmasses, _) = create_reference_and_modded_landmasses(
+                &parsed_plugins,
+                &mut known_textures,
+                &MergedLandsConfig::default(),
+            );
             let land = modded_landmasses[1]
                 .land
                 .get(&crate::Vec2::new(coords.0, coords.1))
@@ -1996,7 +2201,11 @@ mod tests {
             };
             let mut known_textures = crate::land::textures::KnownTextures::new();
             let (reference_landmass, modded_landmasses, raw_load_order_landmass) =
-                create_reference_and_modded_landmasses(&parsed_plugins, &mut known_textures);
+                create_reference_and_modded_landmasses(
+                    &parsed_plugins,
+                    &mut known_textures,
+                    &MergedLandsConfig::default(),
+                );
             let mut merged_lands = create_merged_lands_from_reference(&reference_landmass);
 
             for modded_landmass in &modded_landmasses {

@@ -25,9 +25,6 @@ simplelog = "0.12.2"
 log = "0.4.29"
 anyhow = "1.0.102"
 
-# Used when parsing openmw.cfg (OpenMW configuration files).
-openmw-config = "1.0.1"
-
 # For producing images of terrain.
 image = { version = "0.24.9", default-features = false, features = ["png"] }
 
@@ -38,3 +35,7 @@ git = "https://github.com/Greatness7/tes3"
 rev = "c5dd8d261372b4d1677ae9ee3aba13442820e907"
 default-features = false
 features = ["esp"]
+
+[target.'cfg(windows)'.dependencies]
+# Resolve redirected Documents folders using the same OS API as OpenMW.
+windows-sys = { version = "0.59", features = ["Win32_UI_Shell", "Win32_System_Com"] }

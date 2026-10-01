@@ -5,3 +5,5 @@ Maps/*
 merged_lands.log
 *.ini
 Conflicts/*
+dist/
+__pycache__/

@@ -1,9 +1,10 @@
 use crate::cli::SortOrder;
 use crate::io::meta_schema::{PluginMeta, VersionedPluginMeta};
+pub use crate::io::openmw_cfg::OpenMWCfgSource;
+use crate::io::openmw_cfg::OpenMWConfig;
 use crate::term_style::{bold, bold_red, yellow};
 use anyhow::{Context, Result, anyhow, bail};
 use log::{debug, error, info, trace, warn};
-use openmw_config::{OpenMWConfiguration, default_data_local_path};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
@@ -239,15 +240,6 @@ pub enum PluginListSource {
 // OpenMW cfg loading
 // -------------------------------------------------------------------------------------------------
 
-/// Where to load the `OpenMW` configuration from.
-pub enum OpenMWCfgSource {
-    /// Use [`OpenMWConfiguration::from_env`] — respects `OPENMW_CONFIG` / `OPENMW_CONFIG_DIR`
-    /// and then falls back to the platform-default location.
-    Default,
-    /// Load from the given file or directory path.
-    Path(PathBuf),
-}
-
 pub struct LoadedOpenMWConfig {
     /// The ordered data directories used for plugin and meta discovery.
     pub data_dirs: DataDirs,
@@ -260,33 +252,15 @@ pub struct LoadedOpenMWConfig {
 /// Loads an `OpenMW` configuration and extracts the list of data directories, the ordered list of
 /// `content=` entries, and the resolved `data-local` output directory.
 ///
-/// The returned [`DataDirs`] will include any entries the `openmw-config` crate injects for the
-/// engine resources VFS and `data-local`; this matches what `OpenMW` itself sees at runtime.
+/// Includes the engine resources VFS and `data-local` in the appropriate priority order.
 pub fn load_openmw_cfg(source: OpenMWCfgSource) -> Result<LoadedOpenMWConfig> {
-    let config = match source {
-        OpenMWCfgSource::Default => {
-            info!("Loading OpenMW configuration from default location");
-            OpenMWConfiguration::from_env()
-        }
-        OpenMWCfgSource::Path(path) => {
-            info!(
-                "Loading OpenMW configuration from {}",
-                path.to_string_lossy()
-            );
-            OpenMWConfiguration::new(Some(path))
-        }
-    }
-    .map_err(|e| anyhow!("Failed to load openmw.cfg: {e:?}"))?;
-
-    debug!(
+    let config = OpenMWConfig::load(source).context("Failed to load openmw.cfg")?;
+    info!(
         "Using root openmw.cfg at {}",
-        config.root_config_file().to_string_lossy()
+        config.root_config_file.display()
     );
 
-    let dirs: Vec<PathBuf> = config
-        .data_directories_iter()
-        .map(|d| d.parsed().to_path_buf())
-        .collect();
+    let dirs = config.data_directories;
 
     if dirs.is_empty() {
         bail!("openmw.cfg contains no `data=` directories; cannot discover plugins");
@@ -296,10 +270,7 @@ pub fn load_openmw_cfg(source: OpenMWCfgSource) -> Result<LoadedOpenMWConfig> {
         trace!("data dir: {}", dir.to_string_lossy());
     }
 
-    let plugins: Vec<String> = config
-        .content_files_iter()
-        .map(|f| f.value().clone())
-        .collect();
+    let plugins = config.content;
 
     debug!(
         "Parsed {} data directories and {} content files from openmw.cfg",
@@ -307,9 +278,7 @@ pub fn load_openmw_cfg(source: OpenMWCfgSource) -> Result<LoadedOpenMWConfig> {
         plugins.len()
     );
 
-    let data_local = config
-        .data_local()
-        .map_or_else(default_data_local_path, |dir| dir.parsed().to_path_buf());
+    let data_local = config.data_local;
 
     debug!(
         "Resolved OpenMW data-local output directory to {}",

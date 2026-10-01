@@ -1,25 +1,122 @@
-name: Corprus Crucible Manufacturing
+name: Build and release
 
 on:
   workflow_dispatch:
   pull_request:
   push:
-    branches: main
+    branches: [main]
     tags: ['*']
 
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
-  build-app:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy
+      - run: cargo fmt --check
+      - run: cargo clippy --workspace --all-targets --all-features -- -W clippy::pedantic -D warnings
+      - run: python3 -m unittest discover -s ci -p 'test_*.py'
+
+  minimum-rust:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install 1.88.0 --profile minimal
+      - run: cargo +1.88.0 test --locked
+
+  build:
+    needs: [check, minimum-rust]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-amd64
+            target: x86_64-unknown-linux-gnu
+            runner: ubuntu-24.04
+          - platform: linux-arm64
+            target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+          - platform: macos-amd64
+            target: x86_64-apple-darwin
+            runner: macos-15-intel
+          - platform: macos-arm64
+            target: aarch64-apple-darwin
+            runner: macos-15
+          - platform: windows-amd64
+            target: x86_64-pc-windows-msvc
+            runner: windows-2022
+          - platform: android-arm64
+            target: aarch64-linux-android
+            runner: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
+    env:
+      BUILD_TARGET: ${{ matrix.target }}
+      BUILD_PLATFORM: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install stable --profile minimal --target "$BUILD_TARGET"
+      - name: Configure Android linker
+        if: matrix.platform == 'android-arm64'
+        run: |
+          linker="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android23-clang"
+          test -x "$linker"
+          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$linker" >> "$GITHUB_ENV"
+      - name: Native tests and CLI smoke check
+        if: matrix.platform != 'android-arm64'
+        run: |
+          cargo test --locked --target "$BUILD_TARGET"
+          cargo run --locked --target "$BUILD_TARGET" -- --help
+      - run: cargo build --release --locked --target "$BUILD_TARGET"
+      - name: Package executable and checksums
+        run: python3 ci/package.py "$BUILD_PLATFORM" "$BUILD_TARGET" --version "$GITHUB_REF_NAME"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: merged-lands-${{ matrix.platform }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
-      pages: write
-      id-token: write
-    uses: DreamWeave-MP/StroggForge/.github/workflows/rustGlobalBuild.yml@v38
-    secrets:
-      VT_API_KEY: ${{ secrets.VT_API_KEY }}
-    with:
-      binary_names: '["merged_lands"]'
-      publish_docs: false
-      cargo_publish: false
-      generate_discord_notification: false
-      enable_android: true
-      enable_portmaster: true
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: merged-lands-*
+          merge-multiple: true
+          path: dist
+      - name: Verify and publish tagged release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          cd dist
+          for platform in linux-amd64 linux-arm64 macos-amd64 macos-arm64 windows-amd64 android-arm64; do
+            test -s "merged_lands-${platform}.zip"
+            sha256sum --check "merged_lands-${platform}.zip.sha256sum.txt"
+            sha512sum --check "merged_lands-${platform}.zip.sha512sum.txt"
+          done
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" ./* --clobber
+          else
+            gh release create "$RELEASE_TAG" ./* --verify-tag --generate-notes --title "$RELEASE_TAG"
+          fi

@@ -3,7 +3,7 @@
 ## Repo Reality Check (verify first)
 - This snapshot is a single Rust crate (`Cargo.toml`) named `merged_lands`.
 - `rust-toolchain.toml` pins `stable`; `Cargo.toml` requires Rust `1.88.0`.
-- `Cargo.toml` uses `openmw-config = "1.0.1"` from crates.io.
+- OpenMW config parsing and discovery live in `src/io/openmw_cfg.rs` and `src/io/openmw_paths.rs`; there is no external config parser dependency.
 - Current tracked tree includes `src/`, so normal Rust checks should work.
 - The current checkout is OpenMW-first: default mode reads `openmw.cfg`; use `--vanilla` for classic Morrowind behavior.
 
@@ -26,4 +26,6 @@
 - `.mergedlands.toml` sidecar files next to plugins control merge inclusion/conflict strategy.
 
 ## Repo Automation
-- Release automation exists at `.github/workflows/release.yaml`.
+- `.github/workflows/release.yaml` owns checks, native desktop builds/tests, Android cross-builds, and tagged GitHub releases.
+- Package checks: `python3 -m unittest discover -s ci -p 'test_*.py'`.
+- Packaging: `python3 ci/package.py <platform> <rust-target> --version <version>` after a release build for that target.
