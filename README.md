@@ -128,6 +128,22 @@ ignore_plugins = [
 Existing config files are not overwritten with new defaults. Edit the list if your setup needs
 different behavior.
 
+New configs also include a plugin-specific exception for Tamriel Rebuilt's Hunza Camp:
+
+```toml
+[cell_ignore_by_plugin]
+"TR_Mainland.esm" = [[-9, -46], [-9, -47], [-10, -46], [-10, -47]]
+```
+
+These four cells are skipped before merging and seam repair. When TR is their only terrain
+source, the generated plugin contains no LAND overrides for them, leaving TR's original
+terrain in-game. Other TR cells continue to merge normally. To apply this exception to an
+existing config, add the entry to its `[cell_ignore_by_plugin]` table, after all top-level
+settings. To opt out, remove the entry or set it to `[]`.
+
+The [Hunza Camp investigation](docs/hunza-camp.md) describes the source discontinuity and
+why averaging it can lower the surrounding landscape.
+
 Supported settings:
 
 ```toml
@@ -178,7 +194,9 @@ no effect. Both settings work in OpenMW and `--vanilla` modes, and global exclus
 
 If a skipped plugin supplied the only terrain for a cell, the tool has no replacement to write;
 the original plugin still supplies that terrain in-game. Where earlier terrain exists, the merged
-output can restore it. Seam repair still applies to cells supplied by other plugins.
+output can restore it. Texture-only earlier records are omitted when the ignored winning plugin
+supplies the cell's heights, because a heightless LAND override would discard those heights.
+Seam repair still applies to cells supplied by other plugins.
 
 Output directory precedence is:
 

@@ -17,6 +17,9 @@ const DEFAULT_IGNORED_PLUGINS: [&str; 6] = [
     "merged.omwaddon",
     "Merged Objects.esp",
 ];
+// Hunza Camp borders a flat LAND cell. Averaging those borders changes
+// the surrounding cliffs and creates height gradients that TES3 cannot encode.
+const DEFAULT_TR_IGNORED_CELLS: [[i32; 2]; 4] = [[-9, -46], [-9, -47], [-10, -46], [-10, -47]];
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum AppConfigSource {
@@ -139,7 +142,7 @@ impl MergedLandsConfig {
         }
     }
 
-    /// Creates a default config seeded with plugins that are not useful merge inputs.
+    /// Creates a default config with ignored plugins and known terrain exceptions.
     #[must_use]
     pub fn with_default_ignored_plugins() -> Self {
         Self {
@@ -148,6 +151,10 @@ impl MergedLandsConfig {
                 .iter()
                 .map(ToString::to_string)
                 .collect(),
+            cell_ignore_by_plugin: BTreeMap::from([(
+                "TR_Mainland.esm".to_string(),
+                DEFAULT_TR_IGNORED_CELLS.to_vec(),
+            )]),
             ..Self::default()
         }
     }
@@ -321,7 +328,8 @@ fn executable_dir() -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::{
-        AppConfigSource, CONFIG_FILE_NAME, DEFAULT_GENERATED_OUTPUT_DIR, MergedLandsConfig,
+        AppConfigSource, CONFIG_FILE_NAME, DEFAULT_GENERATED_OUTPUT_DIR, DEFAULT_TR_IGNORED_CELLS,
+        MergedLandsConfig,
     };
     use crate::land::terrain_map::Vec2;
     use std::collections::HashSet;
@@ -508,6 +516,27 @@ mod tests {
             created.config.generated_output_dir.as_deref(),
             Some(DEFAULT_GENERATED_OUTPUT_DIR)
         );
+        let expected_cells = DEFAULT_TR_IGNORED_CELLS
+            .into_iter()
+            .map(Vec2::from)
+            .collect();
+        assert_eq!(
+            created.config.ignored_cells_for_plugin("tr_mainland.ESM"),
+            expected_cells
+        );
+        assert!(
+            created
+                .config
+                .ignored_cells_for_plugin("Other.esm")
+                .is_empty()
+        );
+        let saved = MergedLandsConfig::load(&root)
+            .expect("load new config")
+            .expect("config exists");
+        assert_eq!(
+            saved.cell_ignore_by_plugin,
+            created.config.cell_ignore_by_plugin
+        );
 
         fs::write(
             root.join(CONFIG_FILE_NAME),
@@ -518,6 +547,12 @@ mod tests {
 
         assert!(!loaded.created);
         assert_eq!(loaded.config.ignore_plugins(), &["Custom.esp"]);
+        assert!(
+            loaded
+                .config
+                .ignored_cells_for_plugin("TR_Mainland.esm")
+                .is_empty()
+        );
 
         fs::remove_dir_all(root).expect("cleanup temp dir");
     }
