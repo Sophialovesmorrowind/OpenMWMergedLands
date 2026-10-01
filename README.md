@@ -12,6 +12,21 @@ The tool works with both OpenMW (reading `openmw.cfg`) and the original Morrowin
 (reading `Morrowind.ini`). OpenMW is the default mode. See [OpenMW Support](#openmw-support)
 below for details.
 
+## Downloads
+
+Download and extract the ZIP for your platform from the
+[latest release](https://github.com/Sophialovesmorrowind/OpenMWMergedLands/releases/latest).
+Each release also includes SHA-256 and SHA-512 checksum files for every ZIP.
+
+| Platform | Download |
+| --- | --- |
+| Windows x86-64 | [Windows ZIP](https://github.com/Sophialovesmorrowind/OpenMWMergedLands/releases/latest/download/merged_lands-windows-amd64.zip) |
+| Linux x86-64 | [Linux x86-64 ZIP](https://github.com/Sophialovesmorrowind/OpenMWMergedLands/releases/latest/download/merged_lands-linux-amd64.zip) |
+| Linux ARM64 | [Linux ARM64 ZIP](https://github.com/Sophialovesmorrowind/OpenMWMergedLands/releases/latest/download/merged_lands-linux-arm64.zip) |
+| macOS Intel | [macOS Intel ZIP](https://github.com/Sophialovesmorrowind/OpenMWMergedLands/releases/latest/download/merged_lands-macos-amd64.zip) |
+| macOS Apple Silicon | [macOS Apple Silicon ZIP](https://github.com/Sophialovesmorrowind/OpenMWMergedLands/releases/latest/download/merged_lands-macos-arm64.zip) |
+| Android ARM64 | [Android ARM64 ZIP](https://github.com/Sophialovesmorrowind/OpenMWMergedLands/releases/latest/download/merged_lands-android-arm64.zip) |
+
 ## How?
 
 1. The tool builds a "reference" landmass by merging all `.ESM` plugins using a similar algorithm as Morrowind.
@@ -309,7 +324,9 @@ PortMaster launcher is bundled.
 Each build produces a platform ZIP containing the executable, `Conflicts/`, README, original
 MIT license, and build information, plus SHA-256 and SHA-512 checksum files. User TOML files are
 not packaged. Tagged builds verify the archives and publish them as GitHub release assets using
-the built-in token. The workflow is self-contained and needs no custom secrets.
+the built-in token, including when the release already exists. The release job confirms that all
+six ZIPs and their checksum files are attached and writes download links to its job summary.
+The workflow is self-contained and needs no custom secrets.
 
 For example, to build and package Linux x86-64 locally:
 

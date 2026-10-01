@@ -111,13 +111,30 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           cd dist
+          assets=()
           for platform in linux-amd64 linux-arm64 macos-amd64 macos-arm64 windows-amd64 android-arm64; do
-            test -s "merged_lands-${platform}.zip"
-            sha256sum --check "merged_lands-${platform}.zip.sha256sum.txt"
-            sha512sum --check "merged_lands-${platform}.zip.sha512sum.txt"
+            archive="merged_lands-${platform}.zip"
+            test -s "$archive"
+            sha256sum --check "${archive}.sha256sum.txt"
+            sha512sum --check "${archive}.sha512sum.txt"
+            assets+=("$archive" "${archive}.sha256sum.txt" "${archive}.sha512sum.txt")
           done
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" ./* --clobber
+            gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
           else
-            gh release create "$RELEASE_TAG" ./* --verify-tag --generate-notes --title "$RELEASE_TAG"
+            gh release create "$RELEASE_TAG" "${assets[@]}" --verify-tag --generate-notes --title "$RELEASE_TAG"
           fi
+          gh release view "$RELEASE_TAG" --json assets --jq '.assets[] | select(.size > 0) | .name' > "$RUNNER_TEMP/published-assets.txt"
+          for asset in "${assets[@]}"; do
+            if ! grep -Fxq "$asset" "$RUNNER_TEMP/published-assets.txt"; then
+              echo "::error::Release is missing a nonempty asset: $asset"
+              exit 1
+            fi
+          done
+          {
+            echo '## Release downloads'
+            gh release view "$RELEASE_TAG" --json url --jq .url
+            for platform in linux-amd64 linux-arm64 macos-amd64 macos-arm64 windows-amd64 android-arm64; do
+              echo "- [$platform](https://github.com/$GH_REPO/releases/download/$RELEASE_TAG/merged_lands-${platform}.zip)"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
