@@ -1,0 +1,55 @@
+# Adapted from MOMW Mod Template; see site/licenses/MOMW-Mod-Template-MIT.txt.
+[settings]
+soupault_version = "4.8.0"
+strict = true
+site_dir = "site"
+build_dir = "build"
+page_file_extensions = ["md"]
+generator_mode = true
+complete_page_selector = "html"
+default_template_file = "templates/main.html"
+default_content_selector = "main#content"
+default_content_action = "append_child"
+keep_doctype = true
+doctype = "<!DOCTYPE html>"
+pretty_print_html = true
+clean_urls = true
+
+[preprocessors]
+md = "cmark --smart"
+
+[widgets.page-title]
+widget = "title"
+selector = "main h1"
+default = "Merged Lands — Landscape merging for OpenMW"
+append = " | Merged Lands"
+force = false
+
+[widgets.generator-meta]
+widget = "insert_html"
+html = '<meta name="generator" content="soupault">'
+selector = "head"
+
+[widgets.readme-toc]
+widget = "insert_html"
+page = ["index.md"]
+html = '<nav id="toc" aria-label="Table of contents"></nav>'
+selector = "main h2"
+action = "insert_before"
+
+[widgets.table-of-contents]
+after = ["readme-toc"]
+widget = "toc"
+selector = "#toc"
+min_level = 2
+max_level = 2
+numbered_list = false
+use_heading_slug = true
+heading_links = true
+heading_link_text = "→ "
+valid_html = true
+
+# Keep clean URLs usable on both a Pages domain and a /OpenMWMergedLands/ project path.
+[widgets.relative-links]
+after = ["table-of-contents"]
+widget = "relative_links"

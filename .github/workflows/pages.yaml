@@ -1,0 +1,71 @@
+name: Website
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'web/**'
+      - 'ci/check_site.py'
+      - 'ci/test_downloads.mjs'
+      - '.github/workflows/pages.yaml'
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - 'ci/check_site.py'
+      - 'ci/test_downloads.mjs'
+      - '.github/workflows/pages.yaml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.event_name == 'pull_request' && github.ref || 'production' }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pages: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - name: Install CommonMark renderer
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends cmark
+      - name: Check download selection and fallback behavior
+        run: node --test ci/test_downloads.mjs
+      - name: Build static website
+        run: sh web/build.sh
+      - name: Check website links and assets
+        run: python3 ci/check_site.py web/build
+      - name: Configure GitHub Pages
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: actions/configure-pages@v6
+      - name: Upload website
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: web/build
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy website
+        id: deployment
+        uses: actions/deploy-pages@v5.0.1

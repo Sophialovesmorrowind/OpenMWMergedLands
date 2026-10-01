@@ -1,0 +1,34 @@
+/* See the project credits and licenses for source attributions.
+ * The bundled Sakura styles provide the light and dark palettes. */
+.center { text-align: center; }
+.bold { font-weight: bold; }
+body { overflow-wrap: anywhere; }
+.small { font-size: 0.8em; }
+.site-title { font-size: 2.35em; font-weight: bold; line-height: 1.1; margin: 3rem 0 1.5rem; }
+.site-banner { display: block; width: 100%; height: auto; margin: 0 auto 1.5rem; }
+#links { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.2rem; margin: 1.5rem 0; }
+.download-button { width: 100%; font-weight: bold; }
+.platform-download .small { margin-top: 0.4rem; }
+@media (max-width: 520px) {
+  #links { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 340px) {
+  #links { grid-template-columns: 1fr; }
+}
+#release-status { margin: 1rem 0; }
+#toc { margin-bottom: 2.5rem; }
+ul li ul, ol li ul { margin-bottom: 0; }
+h3 { margin-top: 15px; }
+footer { margin-top: 4rem; }
+footer p { margin-bottom: 1rem; }
+/* Sakura's :enabled rules apply to form buttons; include download anchors too. */
+a.button:visited { color: #f9f9f9; }
+a.button:hover, a.button:focus-visible { color: #f9f9f9; background: #982c61; border-color: #982c61; }
+a:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+.skip { position: absolute; left: -10000px; }
+.skip:focus { position: fixed; left: 1rem; top: 1rem; z-index: 1; padding: 0.3rem 0.5rem; background: #f9f9f9; }
+@media (prefers-color-scheme: dark) {
+  .skip:focus { background: #222222; }
+  a.button:visited { color: #222222; }
+  a.button:hover, a.button:focus-visible { color: #222222; background: #c9c9c9; border-color: #c9c9c9; }
+}

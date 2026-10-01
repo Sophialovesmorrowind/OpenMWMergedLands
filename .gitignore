@@ -7,3 +7,5 @@ merged_lands.log
 Conflicts/*
 dist/
 __pycache__/
+web/build/
+web/.tools/

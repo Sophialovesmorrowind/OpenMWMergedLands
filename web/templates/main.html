@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<!-- Adapted from GOCoverify and MOMW Mod Template; see /licenses/. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title></title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Landscape merging and seam repair for OpenMW and classic Morrowind. Available for Linux, macOS, Windows, and Android.">
+    <link rel="stylesheet" href="/css/normalize.css">
+    <link rel="stylesheet" href="/css/sakura.css">
+    <link rel="stylesheet" href="/css/sakura-dark.css" media="(prefers-color-scheme: dark)">
+    <link rel="stylesheet" href="/css/site.css">
+    <script src="/js/releases.js" defer></script>
+  </head>
+  <body>
+    <a class="skip" href="#content">Skip to content</a>
+    <header class="center">
+      <img class="site-banner" src="/images/merged-lands.svg" width="1600" height="589" alt="Merged Lands banner with overlapping terrain layers">
+      <div>Latest version: <span class="bold" id="latest-version">Latest release</span></div>
+      <div id="links" aria-label="Platform downloads">
+        <div class="platform-download" data-package="merged_lands-linux-amd64.zip">
+          <a class="button download-button" href="https://github.com/Sophialovesmorrowind/OpenMWMergedLands/releases/latest/download/merged_lands-linux-amd64.zip" title="Download the latest release for Linux x64">Linux x64</a>
+          <div class="small">
+            <span class="platform-checksums">
+              <a class="sha256" href="https://github.com/Sophialovesmorrowind/OpenMWMergedLands/releases/latest/download/merged_lands-linux-amd64.zip.sha256sum.txt">SHA-256</a> |
+              <a class="sha512" href="https://github.com/Sophialovesmorrowind/OpenMWMergedLands/releases/latest/download/merged_lands-linux-amd64.zip.sha512sum.txt">SHA-512</a> ·
+            </span>
+            <a class="development-download" href="https://github.com/Sophialovesmorrowind/OpenMWMergedLands/actions/workflows/release.yaml?query=branch%3Amain">Dev build</a>
+          </div>
+        </div>
+        <div class="platform-download" data-package="merged_lands-linux-arm64.zip">
+          <a class="button download-button" href="https://github.com/Sophialovesmorrowind/OpenMWMergedLands/releases/latest/download/merged_lands-linux-arm64.zip" title="Download the latest release for Linux ARM64">Linux ARM64</a>
+          <div class="small">
+            <span class="platform-checksums">
+              <a class="sha256" href="https://github.com/Sophialovesmorrowind/OpenMWMergedLands/releases/latest/download/merged_lands-linux-arm64.zip.sha256sum.txt">SHA-256</a> |
+              <a class="sha512" href="https://github.com/Sophialovesmorrowind/OpenMWMergedLands/releases/latest/download/merged_lands-linux-arm64.zip.sha512sum.txt">SHA-512</a> ·
+            </span>
+            <a class="development-download" href="https://github.com/Sophialovesmorrowind/OpenMWMergedLands/actions/workflows/release.yaml?query=branch%3Amain">Dev build</a>
+          </div>
+        </div>
+        <div class="platform-download" data-package="merged_lands-macos-amd64.zip">
+          <a class="button download-button" href="https://github.com/Sophialovesmorrowind/OpenMWMergedLands/releases/latest/download/merged_lands-macos-amd64.zip" title="Download the latest release for macOS Intel">macOS Intel</a>
+          <div class="small">
+            <span class="platform-checksums">
+              <a class="sha256" href="https://github.com/Sophialovesmorrowind/OpenMWMergedLands/releases/latest/download/merged_lands-macos-amd64.zip.sha256sum.txt">SHA-256</a> |
+              <a class="sha512" href="https://github.com/Sophialovesmorrowind/OpenMWMergedLands/releases/latest/download/merged_lands-macos-amd64.zip.sha512sum.txt">SHA-512</a> ·
+            </span>
+            <a class="development-download" href="https://github.com/Sophialovesmorrowind/OpenMWMergedLands/actions/workflows/release.yaml?query=branch%3Amain">Dev build</a>
+          </div>
+        </div>
+        <div class="platform-download" data-package="merged_lands-macos-arm64.zip">
+          <a class="button download-button" href="https://github.com/Sophialovesmorrowind/OpenMWMergedLands/releases/latest/download/merged_lands-macos-arm64.zip" title="Download the latest release for macOS ARM64">macOS ARM64</a>
+          <div class="small">
+            <span class="platform-checksums">
+              <a class="sha256" href="https://github.com/Sophialovesmorrowind/OpenMWMergedLands/releases/latest/download/merged_lands-macos-arm64.zip.sha256sum.txt">SHA-256</a> |
+              <a class="sha512" href="https://github.com/Sophialovesmorrowind/OpenMWMergedLands/releases/latest/download/merged_lands-macos-arm64.zip.sha512sum.txt">SHA-512</a> ·
+            </span>
+            <a class="development-download" href="https://github.com/Sophialovesmorrowind/OpenMWMergedLands/actions/workflows/release.yaml?query=branch%3Amain">Dev build</a>
+          </div>
+        </div>
+        <div class="platform-download" data-package="merged_lands-windows-amd64.zip">
+          <a class="button download-button" href="https://github.com/Sophialovesmorrowind/OpenMWMergedLands/releases/latest/download/merged_lands-windows-amd64.zip" title="Download the latest release for Windows x64">Windows x64</a>
+          <div class="small">
+            <span class="platform-checksums">
+              <a class="sha256" href="https://github.com/Sophialovesmorrowind/OpenMWMergedLands/releases/latest/download/merged_lands-windows-amd64.zip.sha256sum.txt">SHA-256</a> |
+              <a class="sha512" href="https://github.com/Sophialovesmorrowind/OpenMWMergedLands/releases/latest/download/merged_lands-windows-amd64.zip.sha512sum.txt">SHA-512</a> ·
+            </span>
+            <a class="development-download" href="https://github.com/Sophialovesmorrowind/OpenMWMergedLands/actions/workflows/release.yaml?query=branch%3Amain">Dev build</a>
+          </div>
+        </div>
+        <div class="platform-download" data-package="merged_lands-android-arm64.zip">
+          <a class="button download-button" href="https://github.com/Sophialovesmorrowind/OpenMWMergedLands/releases/latest/download/merged_lands-android-arm64.zip" title="Download the latest release for Android ARM64">Android ARM64</a>
+          <div class="small">
+            <span class="platform-checksums">
+              <a class="sha256" href="https://github.com/Sophialovesmorrowind/OpenMWMergedLands/releases/latest/download/merged_lands-android-arm64.zip.sha256sum.txt">SHA-256</a> |
+              <a class="sha512" href="https://github.com/Sophialovesmorrowind/OpenMWMergedLands/releases/latest/download/merged_lands-android-arm64.zip.sha512sum.txt">SHA-512</a> ·
+            </span>
+            <a class="development-download" href="https://github.com/Sophialovesmorrowind/OpenMWMergedLands/actions/workflows/release.yaml?query=branch%3Amain">Dev build</a>
+          </div>
+        </div>
+      </div>
+      <p id="release-status" class="small" role="status">Choose the ZIP for your operating system and architecture.</p>
+      <p class="small"><a href="https://github.com/Sophialovesmorrowind/OpenMWMergedLands/releases">All releases</a></p>
+      <p id="development-status" class="small">Dev builds are GitHub artifacts and require sign-in to download.</p>
+      <nav id="nav" aria-label="Main navigation">
+        <a href="/">README</a> | <a href="/changelog/">Changelog</a>
+      </nav>
+      <div id="repo-links">
+        <a href="https://github.com/Sophialovesmorrowind/OpenMWMergedLands/commits/main">Activity</a> |
+        <a href="https://github.com/Sophialovesmorrowind/OpenMWMergedLands/issues">Report a Bug</a> |
+        <a href="https://modding-openmw.gitlab.io/update-center/">Update Center</a>
+      </div>
+    </header>
+    <main id="content" tabindex="-1"></main>
+    <footer class="center small">
+      <p><a href="https://github.com/Sophialovesmorrowind/OpenMWMergedLands">Source code</a> · MIT</p>
+      <p>Built with <a href="https://soupault.app/">Soupault</a>. Layout adapted from <a href="https://modding-openmw.gitlab.io/gocoverify/">GOCoverify</a> and the <a href="https://gitlab.com/modding-openmw/momw-mod-template">MOMW Mod Template</a>.</p>
+      <p><a href="/licenses/">Website licenses</a></p>
+    </footer>
+  </body>
+</html>

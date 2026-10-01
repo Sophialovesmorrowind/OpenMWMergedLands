@@ -30,5 +30,7 @@
 
 ## Repo Automation
 - `.github/workflows/release.yaml` owns checks, native desktop builds/tests, Android cross-builds, and tagged GitHub releases.
+- `.github/workflows/pages.yaml` builds the Soupault website and deploys `main` to the `github-pages` environment.
+- Website checks: `sh web/build.sh`, `python3 ci/check_site.py web/build`, and `node --test ci/test_downloads.mjs`; see `docs/website.md` for the local preview and Pages setup.
 - Package checks: `python3 -m unittest discover -s ci -p 'test_*.py'`.
 - Packaging: `python3 ci/package.py <platform> <rust-target> --version <version>` after a release build for that target.

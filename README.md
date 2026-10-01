@@ -2,6 +2,9 @@
 
 `merged_lands.exe` is a tool for merging land in TES3 mods.
 
+The [Merged Lands website](https://sophialovesmorrowind.github.io/OpenMWMergedLands/)
+provides platform downloads, checksums, and usage instructions.
+
 The output of the tool is a plugin called `Merged Lands.omwaddon` in OpenMW mode, or
 `Merged Lands.esp` in classic `--vanilla` mode. It should go at the end of your load order.
 Yes, that includes after `Merged Objects.esp` if you're using `TES3Merge`.

@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="589" viewBox="0 0 1600 589" role="img" aria-labelledby="title description">
+  <title id="title">Merged Lands</title>
+  <desc id="description">Layers of Morrowind-inspired terrain meet beneath the Merged Lands wordmark.</desc>
+  <defs>
+    <linearGradient id="sky" x2="0" y2="1">
+      <stop stop-color="#c0d9d2"/>
+      <stop offset="1" stop-color="#e9ddbf"/>
+    </linearGradient>
+    <linearGradient id="land" x2="0" y2="1">
+      <stop stop-color="#355e56"/>
+      <stop offset="1" stop-color="#213e38"/>
+    </linearGradient>
+    <pattern id="grid" width="80" height="60" patternUnits="userSpaceOnUse" patternTransform="skewX(-18)">
+      <path d="M80 0H0V60" fill="none" stroke="#cfdec5" stroke-width="1.5" opacity=".18"/>
+    </pattern>
+    <clipPath id="terrain"><path d="M0 365 155 286 312 338 477 248 623 307 800 260 968 327 1107 289 1306 364 1446 332 1600 367V589H0Z"/></clipPath>
+  </defs>
+  <path fill="url(#sky)" d="M0 0h1600v589H0z"/>
+  <circle cx="1225" cy="105" r="57" fill="#f1e7c9" opacity=".85"/>
+  <path d="M0 320 140 198 264 245 363 112 454 213 598 145 772 277 953 153 1137 276 1273 167 1420 274 1600 199V589H0Z" fill="#81958a"/>
+  <path d="M0 364 206 247 358 292 520 193 727 339 894 231 1082 302 1223 258 1422 342 1600 286V589H0Z" fill="#627e70"/>
+  <path d="M0 365 155 286 312 338 477 248 623 307 800 260 968 327 1107 289 1306 364 1446 332 1600 367V589H0Z" fill="url(#land)"/>
+  <g clip-path="url(#terrain)">
+    <path fill="url(#grid)" d="M0 210h1600v379H0z"/>
+    <g fill="none" stroke="#acc7ad" stroke-width="3" opacity=".38">
+      <path d="M-40 409Q110 312 280 378T605 363T945 369T1270 402T1640 384"/>
+      <path d="M-40 440Q110 346 280 411T605 396T945 402T1270 435T1640 417"/>
+      <path d="M-40 473Q110 380 280 444T605 429T945 435T1270 468T1640 450"/>
+      <path d="M-40 506Q110 413 280 477T605 462T945 468T1270 501T1640 483"/>
+      <path d="M-40 539Q110 446 280 510T605 495T945 501T1270 534T1640 516"/>
+    </g>
+  </g>
+  <text x="62" y="500" fill="#fffdf4" stroke="#203d36" stroke-width="7" paint-order="stroke" font-family="system-ui, sans-serif" font-size="153" font-weight="900" letter-spacing="-7">Merged Lands</text>
+  <text x="68" y="555" fill="#e2ecdf" font-family="system-ui, sans-serif" font-size="31" letter-spacing="2">LANDSCAPE MERGING FOR OPENMW</text>
+</svg>
