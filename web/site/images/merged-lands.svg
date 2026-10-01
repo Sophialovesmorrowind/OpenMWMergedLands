@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="589" viewBox="0 0 1600 589" role="img" aria-labelledby="title description">
   <title id="title">Merged Lands</title>
-  <desc id="description">A bright Pride rainbow with smiling clouds arches above layered terrain, including a triangular mountain with a small zigzag crack. A smiling sun with cartoon flames and three colorful psychedelic flowers surround the Merged Lands wordmark.</desc>
+  <desc id="description">A bright Pride rainbow with smiling clouds arches above layered terrain, including a triangular mountain with a small zigzag crack. A smiling sun with cartoon flames and three colorful flowers with happy faces surround the Merged Lands wordmark.</desc>
   <defs>
     <linearGradient id="sky" x2="0" y2="1">
       <stop stop-color="#c0d9d2"/>
@@ -15,7 +15,7 @@
     </pattern>
     <clipPath id="terrain"><path d="M0 365 155 286 312 338 477 248 623 307 800 260 968 327 1107 289 1306 364 1446 332 1600 367V589H0Z"/></clipPath>
     <path id="sun-flame" d="M-18-61C-22-77-3-77 0-94C0-78 22-77 18-61Z"/>
-    <path id="flower-petal" d="M-12-10C-36-29-31-61-8-61C15-61 27-34 12-18L0 0Z"/>
+    <path id="flower-petal" d="M-13-12C-37-31-28-62 0-62C28-62 37-31 13-12L0 0Z"/>
     <g id="psychedelic-flower" stroke="#294b40" stroke-width="3" stroke-linejoin="round">
       <use href="#flower-petal" fill="#f487d1"/>
       <use href="#flower-petal" transform="rotate(45)" fill="#b79af3"/>
@@ -25,9 +25,16 @@
       <use href="#flower-petal" transform="rotate(225)" fill="#b79af3"/>
       <use href="#flower-petal" transform="rotate(270)" fill="#7ee1d5"/>
       <use href="#flower-petal" transform="rotate(315)" fill="#f6d775"/>
-      <circle r="22" fill="#f3d976"/>
-      <circle r="14" fill="#dca1e6" stroke="none"/>
-      <path d="M0 0C-5 0-5-8 1-8C12-8 14 8 3 12C-12 17-23-4-12-16" fill="none" stroke="#784782" stroke-width="3.5" stroke-linecap="round"/>
+      <circle r="27" fill="#f1e7c9" stroke="#bd9557"/>
+      <g fill="#f7a8b2" stroke="none">
+        <ellipse cx="-17" cy="7" rx="4.2" ry="2.5"/>
+        <ellipse cx="17" cy="7" rx="4.2" ry="2.5"/>
+      </g>
+      <g fill="#56624b" stroke="none">
+        <circle cx="-9" cy="-6" r="3"/>
+        <circle cx="9" cy="-6" r="3"/>
+      </g>
+      <path d="M-11 6Q0 20 11 6" fill="none" stroke="#56624b" stroke-width="2.8" stroke-linecap="round"/>
     </g>
     <g id="flower-leaf">
       <path d="M0 0C-36 8-56-5-64-30C-27-33-9-19 0 0Z" fill="currentColor" stroke="#294b40" stroke-width="3"/>
