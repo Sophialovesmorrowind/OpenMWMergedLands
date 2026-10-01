@@ -247,7 +247,9 @@ fn resolve_path(value: &str, base: &Path, paths: &OpenMWPaths) -> Option<PathBuf
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use crate::test_support::create_temp_dir;
+    use std::sync::Barrier;
+    use std::thread;
 
     struct Fixture {
         root: PathBuf,
@@ -256,15 +258,7 @@ mod tests {
 
     impl Fixture {
         fn new() -> Self {
-            let root = std::env::temp_dir().join(format!(
-                "merged_lands_cfg_{}_{}",
-                std::process::id(),
-                SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .expect("time")
-                    .as_nanos()
-            ));
-            fs::create_dir_all(&root).expect("directory");
+            let root = create_temp_dir("merged_lands_cfg");
             let root = fs::canonicalize(root).expect("canonical root");
             let paths = OpenMWPaths::fixture(&root);
             Self { root, paths }
@@ -284,6 +278,40 @@ mod tests {
     impl Drop for Fixture {
         fn drop(&mut self) {
             fs::remove_dir_all(&self.root).expect("cleanup");
+        }
+    }
+
+    #[test]
+    fn concurrent_fixtures_keep_config_files_and_cleanup_isolated() {
+        let start = Barrier::new(16);
+        let mut fixtures = thread::scope(|scope| {
+            let handles: Vec<_> = (0..16)
+                .map(|index| {
+                    let start = &start;
+                    scope.spawn(move || {
+                        start.wait();
+                        let fixture = Fixture::new();
+                        let content = format!("Fixture{index}.esm");
+                        fixture.write("openmw.cfg", &format!("content={content}\n"));
+                        (fixture, content)
+                    })
+                })
+                .collect();
+            handles
+                .into_iter()
+                .map(|handle| handle.join().expect("fixture thread"))
+                .collect::<Vec<_>>()
+        });
+        let roots: HashSet<_> = fixtures.iter().map(|(fixture, _)| &fixture.root).collect();
+        assert_eq!(roots.len(), fixtures.len());
+
+        let (removed, content) = fixtures.pop().expect("fixture");
+        assert_eq!(removed.load().content, [content]);
+        let removed_root = removed.root.clone();
+        drop(removed);
+        assert!(!removed_root.exists());
+        for (fixture, content) in fixtures {
+            assert_eq!(fixture.load().content, [content]);
         }
     }
 

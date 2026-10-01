@@ -221,8 +221,8 @@ fn documents_dir() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::create_temp_dir;
     use std::collections::HashMap;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn platform_defaults_cover_linux_macos_windows_and_android() {
@@ -302,14 +302,7 @@ mod tests {
 
     #[test]
     fn config_discovery_uses_environment_precedence_and_first_existing_directory() {
-        let root = env::temp_dir().join(format!(
-            "merged_lands_discovery_{}_{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("time")
-                .as_nanos()
-        ));
+        let root = create_temp_dir("merged_lands_discovery");
         let first = root.join("first");
         let second = root.join("second");
         for dir in [&first, &second] {
@@ -347,14 +340,7 @@ mod tests {
 
     #[test]
     fn config_discovery_prefers_engine_local_then_global_then_standalone_user_config() {
-        let root = env::temp_dir().join(format!(
-            "merged_lands_engine_discovery_{}_{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("time")
-                .as_nanos()
-        ));
+        let root = create_temp_dir("merged_lands_engine_discovery");
         let paths = OpenMWPaths::fixture(&root);
         let local = paths.local.join("openmw.cfg");
         let global = paths

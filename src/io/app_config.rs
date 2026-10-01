@@ -332,25 +332,10 @@ mod tests {
         MergedLandsConfig,
     };
     use crate::land::terrain_map::Vec2;
+    use crate::test_support::create_temp_dir as unique_temp_dir;
     use std::collections::HashSet;
     use std::fs;
     use std::path::{Path, PathBuf};
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    fn unique_temp_dir(name: &str) -> std::path::PathBuf {
-        let unique = format!(
-            "{}_{}_{}",
-            name,
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("clock before unix epoch")
-                .as_nanos()
-        );
-        let dir = std::env::temp_dir().join(unique);
-        fs::create_dir_all(&dir).expect("create temp dir");
-        dir
-    }
 
     #[test]
     fn output_file_dir_resolves_relative_paths_against_merged_lands_dir() {

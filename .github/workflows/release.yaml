@@ -30,8 +30,16 @@ jobs:
           rustc --version --verbose
           cargo --version
           cargo clippy --version
+      - name: Cache Cargo dependencies for checks
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: ubuntu-24.04
+          cache-bin: "false"
+          cache-on-failure: "true"
+          # PRs and tags restore the default branch's caches without duplicating them.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo fmt --check
-      - run: cargo clippy --workspace --all-targets --all-features -- -W clippy::pedantic -D warnings
+      - run: cargo clippy --locked --workspace --all-targets --all-features -- -W clippy::pedantic -D warnings
       - run: python3 -m unittest discover -s ci -p 'test_*.py'
 
   build:
@@ -78,6 +86,14 @@ jobs:
           linker="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android23-clang"
           test -x "$linker"
           echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$linker" >> "$GITHUB_ENV"
+      - name: Cache Cargo dependencies for build target
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Separate matrix entries and jobs must be able to save their own artifacts.
+          key: ${{ matrix.runner }}-${{ matrix.target }}
+          cache-bin: "false"
+          cache-on-failure: "true"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Native tests and CLI smoke check
         if: matrix.platform != 'android-arm64'
         run: |
