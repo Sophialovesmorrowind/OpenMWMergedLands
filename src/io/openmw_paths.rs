@@ -12,6 +12,7 @@ pub(super) struct OpenMWPaths {
     pub user_data: PathBuf,
     pub local: PathBuf,
     pub global: Option<PathBuf>,
+    global_config: Option<PathBuf>,
     home: Option<PathBuf>,
 }
 
@@ -23,6 +24,7 @@ impl OpenMWPaths {
             user_data: root.join("userdata"),
             local: root.join("engine"),
             global: Some(root.join("global")),
+            global_config: Some(root.join("globalconfig")),
             home: Some(root.to_path_buf()),
         }
     }
@@ -106,6 +108,8 @@ impl OpenMWPaths {
             user_data,
             local,
             global,
+            global_config: matches!(os, "linux" | "freebsd" | "openbsd")
+                .then(|| PathBuf::from("/etc/openmw")),
             home,
         })
     }
@@ -134,6 +138,17 @@ impl OpenMWPaths {
                 }
             }
         }
+        let local = self.local.join("openmw.cfg");
+        if local.is_file() {
+            return local;
+        }
+        if let Some(global) = &self.global_config {
+            let global = global.join("openmw.cfg");
+            if global.is_file() {
+                return global;
+            }
+        }
+        // A standalone user config remains usable when the engine isn't installed.
         self.user_config.join("openmw.cfg")
     }
 }
@@ -149,7 +164,20 @@ pub(super) fn config_file_path(path: &Path) -> Result<PathBuf> {
     } else {
         path.to_path_buf()
     };
-    fs::canonicalize(&path).with_context(|| anyhow!("Unable to locate {}", path.display()))
+    let metadata =
+        fs::metadata(&path).with_context(|| anyhow!("Unable to locate {}", path.display()))?;
+    anyhow::ensure!(
+        metadata.is_file(),
+        "Config is not a file: {}",
+        path.display()
+    );
+    if path.is_absolute() {
+        Ok(path)
+    } else {
+        Ok(env::current_dir()
+            .context("Unable to locate the working directory")?
+            .join(path))
+    }
 }
 
 fn engine_directory(tool_dir: &Path) -> PathBuf {
@@ -314,6 +342,36 @@ mod tests {
             paths.discover(&|_| None),
             paths.user_config.join("openmw.cfg")
         );
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn config_discovery_prefers_engine_local_then_global_then_standalone_user_config() {
+        let root = env::temp_dir().join(format!(
+            "merged_lands_engine_discovery_{}_{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        ));
+        let paths = OpenMWPaths::fixture(&root);
+        let local = paths.local.join("openmw.cfg");
+        let global = paths
+            .global_config
+            .as_ref()
+            .expect("global config")
+            .join("openmw.cfg");
+        let user = paths.user_config.join("openmw.cfg");
+        for file in [&local, &global, &user] {
+            fs::create_dir_all(file.parent().expect("parent")).expect("directory");
+            fs::write(file, "").expect("config");
+        }
+        assert_eq!(paths.discover(&|_| None), local);
+        fs::remove_file(&local).expect("remove local fixture");
+        assert_eq!(paths.discover(&|_| None), global);
+        fs::remove_file(&global).expect("remove global fixture");
+        assert_eq!(paths.discover(&|_| None), user);
         fs::remove_dir_all(root).expect("cleanup");
     }
 }

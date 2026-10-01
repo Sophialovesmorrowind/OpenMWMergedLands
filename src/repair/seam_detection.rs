@@ -1,6 +1,5 @@
 use crate::LandmassDiff;
-use crate::land::grid_access::Index2D;
-use crate::land::landscape_diff::LandscapeDiff;
+use crate::land::grid_access::{GridAccessor2D, Index2D, SquareGridIterator};
 use crate::land::terrain_map::Vec2;
 use crate::merge::relative_terrain_map::RelativeTerrainMap;
 use log::{debug, trace};
@@ -244,22 +243,18 @@ pub fn repair_landmass_seams(merged: &mut LandmassDiff) -> usize {
     while !possible_seams.is_empty() {
         let next = possible_seams.pop_front().expect("safe");
 
-        let Some(mut rhs) = merged.land.remove(&next.1) else {
-            continue;
-        };
-
-        let Some(lhs) = merged.land.get_mut(&next.0) else {
-            merged.land.insert(next.1, rhs);
+        // LAND maps are stored inline, so removing and reinserting a cell copies all
+        // of its terrain data. Adjacent coordinates are distinct and can be borrowed
+        // together without moving either cell out of the map.
+        let [Some(lhs), Some(rhs)] = merged.land.get_disjoint_mut([&next.0, &next.1]) else {
             continue;
         };
 
         let Some(lhs_height_map) = lhs.height_map.as_mut() else {
-            merged.land.insert(next.1, rhs);
             continue;
         };
 
         let Some(rhs_height_map) = rhs.height_map.as_mut() else {
-            merged.land.insert(next.1, rhs);
             continue;
         };
 
@@ -308,8 +303,6 @@ pub fn repair_landmass_seams(merged: &mut LandmassDiff) -> usize {
         if let Some(average) = sum.checked_div(seam_size) {
             repaired.insert((next, seam_size, max_delta, min_delta, average));
         }
-
-        merged.land.insert(next.1, rhs);
     }
 
     if num_seams_repaired > 0 {
@@ -325,13 +318,17 @@ pub fn repair_landmass_seams(merged: &mut LandmassDiff) -> usize {
     }
 
     for land in merged.land.values_mut() {
-        if let Some(vertex_normals) = land.vertex_normals.as_ref() {
-            land.vertex_normals = Some(LandscapeDiff::apply_mask(
-                vertex_normals,
-                land.height_map
-                    .as_ref()
-                    .map(RelativeTerrainMap::differences),
-            ));
+        if let Some(vertex_normals) = land.vertex_normals.as_mut() {
+            if let Some(height_map) = land.height_map.as_ref() {
+                let allowed = height_map.differences();
+                vertex_normals.clean_some(
+                    vertex_normals
+                        .iter_grid()
+                        .filter(|coords| !allowed.get(*coords)),
+                );
+            } else {
+                vertex_normals.clean_all();
+            }
         }
     }
 
@@ -345,7 +342,7 @@ mod tests {
     use crate::io::parsed_plugins::ParsedPlugin;
     use crate::land::grid_access::Index2D;
     use crate::land::landscape_diff::LandscapeDiff;
-    use crate::land::terrain_map::Vec2;
+    use crate::land::terrain_map::{Vec2, Vec3};
     use crate::merge::relative_terrain_map::RelativeTerrainMap;
     use std::collections::HashMap;
     use std::sync::Arc;
@@ -477,6 +474,100 @@ mod tests {
 
             assert!(first > 0);
             assert_eq!(second, 0);
+        });
+    }
+
+    #[test]
+    fn repairs_shared_four_cell_corner_once() {
+        run_with_large_stack(|| {
+            let corners = [
+                (Vec2::new(0, 0), Index2D::new(64, 64), 0),
+                (Vec2::new(1, 0), Index2D::new(0, 64), 8),
+                (Vec2::new(0, 1), Index2D::new(64, 0), 16),
+                (Vec2::new(1, 1), Index2D::new(0, 0), 24),
+            ];
+            let mut merged = empty_landmass_diff();
+            for (coords, corner, value) in corners {
+                let mut land = landscape(coords);
+                land.height_map
+                    .as_mut()
+                    .expect("height map")
+                    .set_value(corner, value);
+                merged.land.insert(coords, land);
+            }
+
+            assert_eq!(repair_landmass_seams(&mut merged), 4);
+            assert_eq!(merged.land.len(), corners.len());
+            for (coords, corner, _) in corners {
+                assert_eq!(
+                    merged.land[&coords]
+                        .height_map
+                        .as_ref()
+                        .expect("height map")
+                        .get_value(corner),
+                    12
+                );
+            }
+            assert_eq!(repair_landmass_seams(&mut merged), 0);
+        });
+    }
+
+    #[test]
+    fn normal_mask_preserves_repaired_vertices_and_clears_other_differences() {
+        run_with_large_stack(|| {
+            let left_coords = Vec2::new(0, 0);
+            let right_coords = Vec2::new(1, 0);
+            let seam = Index2D::new(64, 10);
+            let interior = Index2D::new(10, 10);
+            let mut left = landscape(left_coords);
+            left.height_map
+                .as_mut()
+                .expect("height map")
+                .set_value(seam, 16);
+            let mut normals = RelativeTerrainMap::empty([[Vec3::new(0i8, 0, 127); 65]; 65]);
+            normals.set_value(seam, Vec3::new(1, 2, 3));
+            normals.set_value(interior, Vec3::new(4, 5, 6));
+            left.vertex_normals = Some(normals);
+
+            let mut merged = empty_landmass_diff();
+            merged.land.insert(left_coords, left);
+            merged.land.insert(right_coords, landscape(right_coords));
+            assert_eq!(repair_landmass_seams(&mut merged), 1);
+
+            let normals = merged.land[&left_coords]
+                .vertex_normals
+                .as_ref()
+                .expect("normals");
+            assert_eq!(normals.get_value(seam), Vec3::new(1, 2, 3));
+            assert!(normals.has_difference(seam));
+            assert_eq!(normals.get_value(interior), Vec3::new(0, 0, 127));
+            assert!(!normals.has_difference(interior));
+        });
+    }
+
+    #[test]
+    fn missing_height_map_keeps_cells_and_clears_normal_differences() {
+        run_with_large_stack(|| {
+            let left_coords = Vec2::new(0, 0);
+            let right_coords = Vec2::new(1, 0);
+            let mut right = landscape(right_coords);
+            right.height_map = None;
+            let mut normals = RelativeTerrainMap::empty([[Vec3::new(0i8, 0, 127); 65]; 65]);
+            normals.set_value(Index2D::new(0, 10), Vec3::new(1, 2, 3));
+            right.vertex_normals = Some(normals);
+
+            let mut merged = empty_landmass_diff();
+            merged.land.insert(left_coords, landscape(left_coords));
+            merged.land.insert(right_coords, right);
+            assert_eq!(repair_landmass_seams(&mut merged), 0);
+            assert_eq!(merged.land.len(), 2);
+            assert!(merged.land[&right_coords].height_map.is_none());
+            let normals = merged.land[&right_coords]
+                .vertex_normals
+                .as_ref()
+                .expect("normals");
+            assert_eq!(normals.get_value(Index2D::new(0, 10)), Vec3::new(0, 0, 127));
+            assert!(!normals.has_difference(Index2D::new(0, 10)));
         });
     }
 }

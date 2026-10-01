@@ -1,0 +1,1020 @@
+{
+  "measured_at": "2026-10-01T15:44:52.466413+00:00",
+  "baseline_commit": "8f38ca8",
+  "platform": "Linux-6.18.54-1-lts-x86_64-with-glibc2.44",
+  "rustc": "rustc 1.94.0 (4a4ef493e 2026-03-02)",
+  "binary_sha256": {
+    "baseline": "5be895bc7674817733c58bd7edff47b9b01e63c94eb432889ae4d2715b8e686e",
+    "candidate": "5d0b7305887fa4a10fac259b4daad25e0a6593aa3299295d7ce50d1b7142cb8d"
+  },
+  "verification": {
+    "rust_tests": 134,
+    "python_tests": 10,
+    "format": true,
+    "strict_clippy": true,
+    "cli_help": true,
+    "terminal_first_run": true
+  },
+  "comparison": "Synthetic release binaries, warm filesystem, seven alternating measured runs; fixture generation and validation excluded. Output comparisons normalize only generation timestamp digits.",
+  "workloads": {
+    "openmw": {
+      "workload": {
+        "grid": 12,
+        "cells": 144,
+        "plugins": 6,
+        "textures_per_plugin": 64,
+        "repeats": 7,
+        "mode": "openmw",
+        "height_step": 8
+      },
+      "binaries": {
+        "baseline": "/home/pandorable/moonsugarmountain/OpenMWMergedLands/target/perf-baseline/release/merged_lands",
+        "candidate": "/home/pandorable/moonsugarmountain/OpenMWMergedLands/target/release/merged_lands"
+      },
+      "output": {
+        "sha256_except_generation_time": "de020d681fc1940fd12b7322dcf8800e25d93090e8e7222f8660445c0b54bf67",
+        "files": 241
+      },
+      "tes3conv": {
+        "tool": "/home/pandorable/moonsugarmountain/momw-tools-pack-linux/tes3conv",
+        "equal_except_generation_time": true,
+        "record_counts": {
+          "Header": 1,
+          "LandscapeTexture": 22,
+          "Landscape": 96
+        }
+      },
+      "summary": {
+        "baseline": {
+          "median_seconds": 0.4608340960003261,
+          "median_peak_rss_kib": 438988,
+          "median_phases_seconds": {
+            "Parsed plugins": 0.01373753,
+            "Built reference and modded landmasses": 0.16578302400000003,
+            "Created merged reference baseline": 5.13e-06,
+            "Merged land diffs and repaired seams": 0.049600733,
+            "Saved conflict summary images": 0.199255086,
+            "Cleaned merged land diff": 0.009771160000000001,
+            "Updated LTEX records": 0.000128161,
+            "Converted merged diff to LAND records": 0.010787155,
+            "Saved plugin and app config": 0.001295227
+          }
+        },
+        "candidate": {
+          "median_seconds": 0.43475277500010634,
+          "median_peak_rss_kib": 434648,
+          "median_phases_seconds": {
+            "Parsed plugins": 0.012679774,
+            "Built reference and modded landmasses": 0.167753515,
+            "Created merged reference baseline": 5.43e-06,
+            "Merged land diffs and repaired seams": 0.037536642,
+            "Saved conflict summary images": 0.195332265,
+            "Cleaned merged land diff": 0.0048464549999999995,
+            "Updated LTEX records": 0.00013136099999999998,
+            "Converted merged diff to LAND records": 0.007260947,
+            "Saved plugin and app config": 0.0013941460000000002
+          }
+        }
+      },
+      "speedup": 1.0599911547435514,
+      "samples": {
+        "baseline": [
+          {
+            "seconds": 0.45692876499970225,
+            "peak_rss_kib": 440184,
+            "phases_seconds": {
+              "Parsed plugins": 0.014352143999999999,
+              "Built reference and modded landmasses": 0.164970639,
+              "Created merged reference baseline": 4.8e-06,
+              "Merged land diffs and repaired seams": 0.046281655000000005,
+              "Saved conflict summary images": 0.20015251900000003,
+              "Cleaned merged land diff": 0.00980751,
+              "Updated LTEX records": 0.00015462,
+              "Converted merged diff to LAND records": 0.011153597,
+              "Saved plugin and app config": 0.001307247
+            },
+            "output": {
+              "sha256_except_generation_time": "de020d681fc1940fd12b7322dcf8800e25d93090e8e7222f8660445c0b54bf67",
+              "files": 241
+            }
+          },
+          {
+            "seconds": 0.4608340960003261,
+            "peak_rss_kib": 441608,
+            "phases_seconds": {
+              "Parsed plugins": 0.017989571000000003,
+              "Built reference and modded landmasses": 0.16616767600000001,
+              "Created merged reference baseline": 5.19e-06,
+              "Merged land diffs and repaired seams": 0.049235641000000004,
+              "Saved conflict summary images": 0.199681047,
+              "Cleaned merged land diff": 0.009297647,
+              "Updated LTEX records": 0.000116621,
+              "Converted merged diff to LAND records": 0.010704124,
+              "Saved plugin and app config": 0.001295227
+            },
+            "output": {
+              "sha256_except_generation_time": "de020d681fc1940fd12b7322dcf8800e25d93090e8e7222f8660445c0b54bf67",
+              "files": 241
+            }
+          },
+          {
+            "seconds": 0.45794108299969594,
+            "peak_rss_kib": 438496,
+            "phases_seconds": {
+              "Parsed plugins": 0.01373753,
+              "Built reference and modded landmasses": 0.16578302400000003,
+              "Created merged reference baseline": 5.019999999999999e-06,
+              "Merged land diffs and repaired seams": 0.050636168,
+              "Saved conflict summary images": 0.19980328800000002,
+              "Cleaned merged land diff": 0.009888581,
+              "Updated LTEX records": 0.000128161,
+              "Converted merged diff to LAND records": 0.010783474,
+              "Saved plugin and app config": 0.0012383869999999999
+            },
+            "output": {
+              "sha256_except_generation_time": "de020d681fc1940fd12b7322dcf8800e25d93090e8e7222f8660445c0b54bf67",
+              "files": 241
+            }
+          },
+          {
+            "seconds": 0.46448102899967125,
+            "peak_rss_kib": 438924,
+            "phases_seconds": {
+              "Parsed plugins": 0.013627529,
+              "Built reference and modded landmasses": 0.169083712,
+              "Created merged reference baseline": 5.469999999999999e-06,
+              "Merged land diffs and repaired seams": 0.053216092000000007,
+              "Saved conflict summary images": 0.199255086,
+              "Cleaned merged land diff": 0.009771160000000001,
+              "Updated LTEX records": 0.00011679,
+              "Converted merged diff to LAND records": 0.010757825,
+              "Saved plugin and app config": 0.00196923
+            },
+            "output": {
+              "sha256_except_generation_time": "de020d681fc1940fd12b7322dcf8800e25d93090e8e7222f8660445c0b54bf67",
+              "files": 241
+            }
+          },
+          {
+            "seconds": 0.46103922099973715,
+            "peak_rss_kib": 438284,
+            "phases_seconds": {
+              "Parsed plugins": 0.016605435,
+              "Built reference and modded landmasses": 0.165415133,
+              "Created merged reference baseline": 5.13e-06,
+              "Merged land diffs and repaired seams": 0.05113697,
+              "Saved conflict summary images": 0.199252017,
+              "Cleaned merged land diff": 0.009411368,
+              "Updated LTEX records": 0.000120191,
+              "Converted merged diff to LAND records": 0.010787155,
+              "Saved plugin and app config": 0.0012257260000000001
+            },
+            "output": {
+              "sha256_except_generation_time": "de020d681fc1940fd12b7322dcf8800e25d93090e8e7222f8660445c0b54bf67",
+              "files": 241
+            }
+          },
+          {
+            "seconds": 0.4626439130001927,
+            "peak_rss_kib": 440508,
+            "phases_seconds": {
+              "Parsed plugins": 0.013406709,
+              "Built reference and modded landmasses": 0.17210197900000002,
+              "Created merged reference baseline": 4.79e-06,
+              "Merged land diffs and repaired seams": 0.049600733,
+              "Saved conflict summary images": 0.197919162,
+              "Cleaned merged land diff": 0.010349862999999999,
+              "Updated LTEX records": 0.00014772999999999997,
+              "Converted merged diff to LAND records": 0.011137077,
+              "Saved plugin and app config": 0.001333737
+            },
+            "output": {
+              "sha256_except_generation_time": "de020d681fc1940fd12b7322dcf8800e25d93090e8e7222f8660445c0b54bf67",
+              "files": 241
+            }
+          },
+          {
+            "seconds": 0.45282127200016475,
+            "peak_rss_kib": 438988,
+            "phases_seconds": {
+              "Parsed plugins": 0.013357828,
+              "Built reference and modded landmasses": 0.163652916,
+              "Created merged reference baseline": 5.45e-06,
+              "Merged land diffs and repaired seams": 0.049511473,
+              "Saved conflict summary images": 0.198361633,
+              "Cleaned merged land diff": 0.00969315,
+              "Updated LTEX records": 0.00014037999999999998,
+              "Converted merged diff to LAND records": 0.010917546,
+              "Saved plugin and app config": 0.001224517
+            },
+            "output": {
+              "sha256_except_generation_time": "de020d681fc1940fd12b7322dcf8800e25d93090e8e7222f8660445c0b54bf67",
+              "files": 241
+            }
+          }
+        ],
+        "candidate": [
+          {
+            "seconds": 0.4592119559997627,
+            "peak_rss_kib": 434648,
+            "phases_seconds": {
+              "Parsed plugins": 0.017085557,
+              "Built reference and modded landmasses": 0.17942306300000002,
+              "Created merged reference baseline": 6.019999999999999e-06,
+              "Merged land diffs and repaired seams": 0.044869408,
+              "Saved conflict summary images": 0.196398979,
+              "Cleaned merged land diff": 0.004844775,
+              "Updated LTEX records": 0.00013136099999999998,
+              "Converted merged diff to LAND records": 0.007245446,
+              "Saved plugin and app config": 0.0013941460000000002
+            },
+            "output": {
+              "sha256_except_generation_time": "de020d681fc1940fd12b7322dcf8800e25d93090e8e7222f8660445c0b54bf67",
+              "files": 241
+            }
+          },
+          {
+            "seconds": 0.43261080299998866,
+            "peak_rss_kib": 434648,
+            "phases_seconds": {
+              "Parsed plugins": 0.012171142,
+              "Built reference and modded landmasses": 0.16709560099999998,
+              "Created merged reference baseline": 5.05e-06,
+              "Merged land diffs and repaired seams": 0.037608472,
+              "Saved conflict summary images": 0.195096233,
+              "Cleaned merged land diff": 0.004851884,
+              "Updated LTEX records": 0.000136871,
+              "Converted merged diff to LAND records": 0.007281727,
+              "Saved plugin and app config": 0.0012958870000000001
+            },
+            "output": {
+              "sha256_except_generation_time": "de020d681fc1940fd12b7322dcf8800e25d93090e8e7222f8660445c0b54bf67",
+              "files": 241
+            }
+          },
+          {
+            "seconds": 0.43366385999979684,
+            "peak_rss_kib": 434076,
+            "phases_seconds": {
+              "Parsed plugins": 0.012527714,
+              "Built reference and modded landmasses": 0.167753515,
+              "Created merged reference baseline": 5.0099999999999995e-06,
+              "Merged land diffs and repaired seams": 0.037428321,
+              "Saved conflict summary images": 0.194625511,
+              "Cleaned merged land diff": 0.0048341339999999995,
+              "Updated LTEX records": 0.00013212,
+              "Converted merged diff to LAND records": 0.0071921879999999995,
+              "Saved plugin and app config": 0.001293536
+            },
+            "output": {
+              "sha256_except_generation_time": "de020d681fc1940fd12b7322dcf8800e25d93090e8e7222f8660445c0b54bf67",
+              "files": 241
+            }
+          },
+          {
+            "seconds": 0.43475277500010634,
+            "peak_rss_kib": 435296,
+            "phases_seconds": {
+              "Parsed plugins": 0.012679774,
+              "Built reference and modded landmasses": 0.168098207,
+              "Created merged reference baseline": 5.4400000000000004e-06,
+              "Merged land diffs and repaired seams": 0.037536642,
+              "Saved conflict summary images": 0.195332265,
+              "Cleaned merged land diff": 0.004838545,
+              "Updated LTEX records": 0.00013111099999999997,
+              "Converted merged diff to LAND records": 0.007218786,
+              "Saved plugin and app config": 0.00188094
+            },
+            "output": {
+              "sha256_except_generation_time": "de020d681fc1940fd12b7322dcf8800e25d93090e8e7222f8660445c0b54bf67",
+              "files": 241
+            }
+          },
+          {
+            "seconds": 0.43476000900000145,
+            "peak_rss_kib": 434032,
+            "phases_seconds": {
+              "Parsed plugins": 0.014346813,
+              "Built reference and modded landmasses": 0.166167508,
+              "Created merged reference baseline": 5.43e-06,
+              "Merged land diffs and repaired seams": 0.036175835,
+              "Saved conflict summary images": 0.19748338799999998,
+              "Cleaned merged land diff": 0.0049309950000000005,
+              "Updated LTEX records": 0.000130781,
+              "Converted merged diff to LAND records": 0.007371427,
+              "Saved plugin and app config": 0.0011632160000000001
+            },
+            "output": {
+              "sha256_except_generation_time": "de020d681fc1940fd12b7322dcf8800e25d93090e8e7222f8660445c0b54bf67",
+              "files": 241
+            }
+          },
+          {
+            "seconds": 0.42934783100008644,
+            "peak_rss_kib": 434520,
+            "phases_seconds": {
+              "Parsed plugins": 0.014272674,
+              "Built reference and modded landmasses": 0.161408043,
+              "Created merged reference baseline": 5.0099999999999995e-06,
+              "Merged land diffs and repaired seams": 0.038192375,
+              "Saved conflict summary images": 0.194964155,
+              "Cleaned merged land diff": 0.004950506,
+              "Updated LTEX records": 0.00013134,
+              "Converted merged diff to LAND records": 0.007343328,
+              "Saved plugin and app config": 0.001474428
+            },
+            "output": {
+              "sha256_except_generation_time": "de020d681fc1940fd12b7322dcf8800e25d93090e8e7222f8660445c0b54bf67",
+              "files": 241
+            }
+          },
+          {
+            "seconds": 0.43475931200009654,
+            "peak_rss_kib": 437500,
+            "phases_seconds": {
+              "Parsed plugins": 0.012598014,
+              "Built reference and modded landmasses": 0.169314865,
+              "Created merged reference baseline": 5.48e-06,
+              "Merged land diffs and repaired seams": 0.036892819,
+              "Saved conflict summary images": 0.19544128900000002,
+              "Cleaned merged land diff": 0.0048464549999999995,
+              "Updated LTEX records": 0.000137211,
+              "Converted merged diff to LAND records": 0.007260947,
+              "Saved plugin and app config": 0.001527078
+            },
+            "output": {
+              "sha256_except_generation_time": "de020d681fc1940fd12b7322dcf8800e25d93090e8e7222f8660445c0b54bf67",
+              "files": 241
+            }
+          }
+        ]
+      }
+    },
+    "vanilla": {
+      "workload": {
+        "grid": 12,
+        "cells": 144,
+        "plugins": 6,
+        "textures_per_plugin": 64,
+        "repeats": 7,
+        "mode": "vanilla",
+        "height_step": 8
+      },
+      "binaries": {
+        "baseline": "/home/pandorable/moonsugarmountain/OpenMWMergedLands/target/perf-baseline/release/merged_lands",
+        "candidate": "/home/pandorable/moonsugarmountain/OpenMWMergedLands/target/release/merged_lands"
+      },
+      "output": {
+        "sha256_except_generation_time": "2d078ded6fa8bad73b1f76b4fef17c44a8f7c382bdd2b6663957d73f57dbd851",
+        "files": 241
+      },
+      "tes3conv": {
+        "tool": "/home/pandorable/moonsugarmountain/momw-tools-pack-linux/tes3conv",
+        "equal_except_generation_time": true,
+        "record_counts": {
+          "Header": 1,
+          "LandscapeTexture": 22,
+          "Landscape": 96
+        }
+      },
+      "summary": {
+        "baseline": {
+          "median_seconds": 0.47504424399994605,
+          "median_peak_rss_kib": 399100,
+          "median_phases_seconds": {
+            "Parsed plugins": 0.013340599,
+            "Built reference and modded landmasses": 0.15424448400000002,
+            "Created merged reference baseline": 0.012524425,
+            "Merged land diffs and repaired seams": 0.066651077,
+            "Saved conflict summary images": 0.19368302,
+            "Cleaned merged land diff": 0.011924042000000001,
+            "Updated LTEX records": 0.000127541,
+            "Converted merged diff to LAND records": 0.012975717,
+            "Saved plugin and app config": 0.001414948
+          }
+        },
+        "candidate": {
+          "median_seconds": 0.4393920419997812,
+          "median_peak_rss_kib": 396324,
+          "median_phases_seconds": {
+            "Parsed plugins": 0.012517516000000001,
+            "Built reference and modded landmasses": 0.15236381499999999,
+            "Created merged reference baseline": 0.012311804,
+            "Merged land diffs and repaired seams": 0.044568792,
+            "Saved conflict summary images": 0.191687611,
+            "Cleaned merged land diff": 0.006290843,
+            "Updated LTEX records": 0.00013252,
+            "Converted merged diff to LAND records": 0.006744985,
+            "Saved plugin and app config": 0.001451858
+          }
+        }
+      },
+      "speedup": 1.0811398445859486,
+      "samples": {
+        "baseline": [
+          {
+            "seconds": 0.47504424399994605,
+            "peak_rss_kib": 398808,
+            "phases_seconds": {
+              "Parsed plugins": 0.013340599,
+              "Built reference and modded landmasses": 0.15332274799999998,
+              "Created merged reference baseline": 0.012108833000000001,
+              "Merged land diffs and repaired seams": 0.066651077,
+              "Saved conflict summary images": 0.19368302,
+              "Cleaned merged land diff": 0.012976797,
+              "Updated LTEX records": 0.000146721,
+              "Converted merged diff to LAND records": 0.012975717,
+              "Saved plugin and app config": 0.001405308
+            },
+            "output": {
+              "sha256_except_generation_time": "2d078ded6fa8bad73b1f76b4fef17c44a8f7c382bdd2b6663957d73f57dbd851",
+              "files": 241
+            }
+          },
+          {
+            "seconds": 0.48983672399981515,
+            "peak_rss_kib": 398352,
+            "phases_seconds": {
+              "Parsed plugins": 0.012016503,
+              "Built reference and modded landmasses": 0.15935661099999998,
+              "Created merged reference baseline": 0.012524425,
+              "Merged land diffs and repaired seams": 0.06921107000000001,
+              "Saved conflict summary images": 0.202982819,
+              "Cleaned merged land diff": 0.012377804,
+              "Updated LTEX records": 0.000127541,
+              "Converted merged diff to LAND records": 0.013816913,
+              "Saved plugin and app config": 0.001478557
+            },
+            "output": {
+              "sha256_except_generation_time": "2d078ded6fa8bad73b1f76b4fef17c44a8f7c382bdd2b6663957d73f57dbd851",
+              "files": 241
+            }
+          },
+          {
+            "seconds": 0.4816013910003676,
+            "peak_rss_kib": 401312,
+            "phases_seconds": {
+              "Parsed plugins": 0.012793056,
+              "Built reference and modded landmasses": 0.15424448400000002,
+              "Created merged reference baseline": 0.013209629,
+              "Merged land diffs and repaired seams": 0.067339302,
+              "Saved conflict summary images": 0.200574406,
+              "Cleaned merged land diff": 0.011971042000000001,
+              "Updated LTEX records": 0.000129161,
+              "Converted merged diff to LAND records": 0.013549081,
+              "Saved plugin and app config": 0.001420297
+            },
+            "output": {
+              "sha256_except_generation_time": "2d078ded6fa8bad73b1f76b4fef17c44a8f7c382bdd2b6663957d73f57dbd851",
+              "files": 241
+            }
+          },
+          {
+            "seconds": 0.47333870100010245,
+            "peak_rss_kib": 400124,
+            "phases_seconds": {
+              "Parsed plugins": 0.015630671,
+              "Built reference and modded landmasses": 0.15262019799999998,
+              "Created merged reference baseline": 0.012659556,
+              "Merged land diffs and repaired seams": 0.066546627,
+              "Saved conflict summary images": 0.192810217,
+              "Cleaned merged land diff": 0.01154848,
+              "Updated LTEX records": 0.00011153,
+              "Converted merged diff to LAND records": 0.012755986,
+              "Saved plugin and app config": 0.001414948
+            },
+            "output": {
+              "sha256_except_generation_time": "2d078ded6fa8bad73b1f76b4fef17c44a8f7c382bdd2b6663957d73f57dbd851",
+              "files": 241
+            }
+          },
+          {
+            "seconds": 0.4687903680001,
+            "peak_rss_kib": 399100,
+            "phases_seconds": {
+              "Parsed plugins": 0.014260385,
+              "Built reference and modded landmasses": 0.14950442000000003,
+              "Created merged reference baseline": 0.012018653,
+              "Merged land diffs and repaired seams": 0.066465597,
+              "Saved conflict summary images": 0.19337597,
+              "Cleaned merged land diff": 0.011924042000000001,
+              "Updated LTEX records": 0.00011259099999999999,
+              "Converted merged diff to LAND records": 0.012646275,
+              "Saved plugin and app config": 0.0014099980000000002
+            },
+            "output": {
+              "sha256_except_generation_time": "2d078ded6fa8bad73b1f76b4fef17c44a8f7c382bdd2b6663957d73f57dbd851",
+              "files": 241
+            }
+          },
+          {
+            "seconds": 0.4698312660002557,
+            "peak_rss_kib": 398528,
+            "phases_seconds": {
+              "Parsed plugins": 0.012206512999999999,
+              "Built reference and modded landmasses": 0.154746569,
+              "Created merged reference baseline": 0.011747462,
+              "Merged land diffs and repaired seams": 0.065229321,
+              "Saved conflict summary images": 0.193081149,
+              "Cleaned merged land diff": 0.011802182,
+              "Updated LTEX records": 0.000129231,
+              "Converted merged diff to LAND records": 0.012959977000000001,
+              "Saved plugin and app config": 0.001345997
+            },
+            "output": {
+              "sha256_except_generation_time": "2d078ded6fa8bad73b1f76b4fef17c44a8f7c382bdd2b6663957d73f57dbd851",
+              "files": 241
+            }
+          },
+          {
+            "seconds": 0.48668790500005343,
+            "peak_rss_kib": 399168,
+            "phases_seconds": {
+              "Parsed plugins": 0.01352919,
+              "Built reference and modded landmasses": 0.154358617,
+              "Created merged reference baseline": 0.013048608,
+              "Merged land diffs and repaired seams": 0.06893561,
+              "Saved conflict summary images": 0.202727621,
+              "Cleaned merged land diff": 0.01165437,
+              "Updated LTEX records": 0.000116611,
+              "Converted merged diff to LAND records": 0.013265530000000001,
+              "Saved plugin and app config": 0.0020052
+            },
+            "output": {
+              "sha256_except_generation_time": "2d078ded6fa8bad73b1f76b4fef17c44a8f7c382bdd2b6663957d73f57dbd851",
+              "files": 241
+            }
+          }
+        ],
+        "candidate": [
+          {
+            "seconds": 0.4468027869997968,
+            "peak_rss_kib": 397072,
+            "phases_seconds": {
+              "Parsed plugins": 0.012264213,
+              "Built reference and modded landmasses": 0.156369235,
+              "Created merged reference baseline": 0.013931132,
+              "Merged land diffs and repaired seams": 0.044856884,
+              "Saved conflict summary images": 0.19791952200000001,
+              "Cleaned merged land diff": 0.006511914,
+              "Updated LTEX records": 0.00013261000000000002,
+              "Converted merged diff to LAND records": 0.007065447,
+              "Saved plugin and app config": 0.001498378
+            },
+            "output": {
+              "sha256_except_generation_time": "2d078ded6fa8bad73b1f76b4fef17c44a8f7c382bdd2b6663957d73f57dbd851",
+              "files": 241
+            }
+          },
+          {
+            "seconds": 0.44496052800013786,
+            "peak_rss_kib": 394060,
+            "phases_seconds": {
+              "Parsed plugins": 0.013107688,
+              "Built reference and modded landmasses": 0.15538908,
+              "Created merged reference baseline": 0.012381584000000001,
+              "Merged land diffs and repaired seams": 0.044568792,
+              "Saved conflict summary images": 0.198157733,
+              "Cleaned merged land diff": 0.006521244000000001,
+              "Updated LTEX records": 0.00013078,
+              "Converted merged diff to LAND records": 0.007053317,
+              "Saved plugin and app config": 0.001451858
+            },
+            "output": {
+              "sha256_except_generation_time": "2d078ded6fa8bad73b1f76b4fef17c44a8f7c382bdd2b6663957d73f57dbd851",
+              "files": 241
+            }
+          },
+          {
+            "seconds": 0.4393920419997812,
+            "peak_rss_kib": 396324,
+            "phases_seconds": {
+              "Parsed plugins": 0.012152903,
+              "Built reference and modded landmasses": 0.15236381499999999,
+              "Created merged reference baseline": 0.012891277000000001,
+              "Merged land diffs and repaired seams": 0.045069094999999997,
+              "Saved conflict summary images": 0.19535970900000002,
+              "Cleaned merged land diff": 0.006324463,
+              "Updated LTEX records": 0.00013501099999999999,
+              "Converted merged diff to LAND records": 0.006944816,
+              "Saved plugin and app config": 0.001644138
+            },
+            "output": {
+              "sha256_except_generation_time": "2d078ded6fa8bad73b1f76b4fef17c44a8f7c382bdd2b6663957d73f57dbd851",
+              "files": 241
+            }
+          },
+          {
+            "seconds": 0.42417429400029505,
+            "peak_rss_kib": 394628,
+            "phases_seconds": {
+              "Parsed plugins": 0.011984792000000001,
+              "Built reference and modded landmasses": 0.147200637,
+              "Created merged reference baseline": 0.011594251,
+              "Merged land diffs and repaired seams": 0.043251986000000006,
+              "Saved conflict summary images": 0.189665529,
+              "Cleaned merged land diff": 0.006171902,
+              "Updated LTEX records": 0.000125171,
+              "Converted merged diff to LAND records": 0.006681385,
+              "Saved plugin and app config": 0.001359637
+            },
+            "output": {
+              "sha256_except_generation_time": "2d078ded6fa8bad73b1f76b4fef17c44a8f7c382bdd2b6663957d73f57dbd851",
+              "files": 241
+            }
+          },
+          {
+            "seconds": 0.427861785999994,
+            "peak_rss_kib": 398924,
+            "phases_seconds": {
+              "Parsed plugins": 0.014580806000000002,
+              "Built reference and modded landmasses": 0.14734909999999998,
+              "Created merged reference baseline": 0.012076613,
+              "Merged land diffs and repaired seams": 0.041548758,
+              "Saved conflict summary images": 0.191687611,
+              "Cleaned merged land diff": 0.006103082,
+              "Updated LTEX records": 0.00011445999999999998,
+              "Converted merged diff to LAND records": 0.006645525,
+              "Saved plugin and app config": 0.001246167
+            },
+            "output": {
+              "sha256_except_generation_time": "2d078ded6fa8bad73b1f76b4fef17c44a8f7c382bdd2b6663957d73f57dbd851",
+              "files": 241
+            }
+          },
+          {
+            "seconds": 0.44023852000009356,
+            "peak_rss_kib": 397664,
+            "phases_seconds": {
+              "Parsed plugins": 0.014473816,
+              "Built reference and modded landmasses": 0.154195505,
+              "Created merged reference baseline": 0.012307904000000001,
+              "Merged land diffs and repaired seams": 0.044686404000000006,
+              "Saved conflict summary images": 0.19096095800000001,
+              "Cleaned merged land diff": 0.006279982999999999,
+              "Updated LTEX records": 0.0001389,
+              "Converted merged diff to LAND records": 0.006744985,
+              "Saved plugin and app config": 0.0012635970000000002
+            },
+            "output": {
+              "sha256_except_generation_time": "2d078ded6fa8bad73b1f76b4fef17c44a8f7c382bdd2b6663957d73f57dbd851",
+              "files": 241
+            }
+          },
+          {
+            "seconds": 0.4272143850002976,
+            "peak_rss_kib": 396176,
+            "phases_seconds": {
+              "Parsed plugins": 0.012517516000000001,
+              "Built reference and modded landmasses": 0.146345815,
+              "Created merged reference baseline": 0.012311804,
+              "Merged land diffs and repaired seams": 0.04404056,
+              "Saved conflict summary images": 0.19125039100000002,
+              "Cleaned merged land diff": 0.006290843,
+              "Updated LTEX records": 0.00013252,
+              "Converted merged diff to LAND records": 0.006727604999999999,
+              "Saved plugin and app config": 0.001477838
+            },
+            "output": {
+              "sha256_except_generation_time": "2d078ded6fa8bad73b1f76b4fef17c44a8f7c382bdd2b6663957d73f57dbd851",
+              "files": 241
+            }
+          }
+        ]
+      }
+    },
+    "no-png": {
+      "workload": {
+        "grid": 12,
+        "cells": 144,
+        "plugins": 1,
+        "textures_per_plugin": 64,
+        "repeats": 7,
+        "mode": "openmw",
+        "height_step": 1
+      },
+      "binaries": {
+        "baseline": "/home/pandorable/moonsugarmountain/OpenMWMergedLands/target/perf-baseline/release/merged_lands",
+        "candidate": "/home/pandorable/moonsugarmountain/OpenMWMergedLands/target/release/merged_lands"
+      },
+      "output": {
+        "sha256_except_generation_time": "1b3c8f94773643fa1eeb0c1bc3f623fca9922473e9f4e5fbe34eb51042cf9461",
+        "files": 1
+      },
+      "tes3conv": {
+        "tool": "/home/pandorable/moonsugarmountain/momw-tools-pack-linux/tes3conv",
+        "equal_except_generation_time": true,
+        "record_counts": {
+          "Header": 1,
+          "LandscapeTexture": 22,
+          "Landscape": 96
+        }
+      },
+      "summary": {
+        "baseline": {
+          "median_seconds": 0.10880425999994259,
+          "median_peak_rss_kib": 198752,
+          "median_phases_seconds": {
+            "Parsed plugins": 0.005265888000000001,
+            "Built reference and modded landmasses": 0.052534374,
+            "Created merged reference baseline": 5.13e-06,
+            "Merged land diffs and repaired seams": 0.01520676,
+            "Saved conflict summary images": 0.008989377,
+            "Cleaned merged land diff": 0.009227418000000001,
+            "Updated LTEX records": 8.131999999999999e-05,
+            "Converted merged diff to LAND records": 0.011230459,
+            "Saved plugin and app config": 0.0014874480000000002
+          }
+        },
+        "candidate": {
+          "median_seconds": 0.09213240200006112,
+          "median_peak_rss_kib": 198464,
+          "median_phases_seconds": {
+            "Parsed plugins": 0.006574514,
+            "Built reference and modded landmasses": 0.050021532,
+            "Created merged reference baseline": 5.57e-06,
+            "Merged land diffs and repaired seams": 0.010395605,
+            "Saved conflict summary images": 0.007569329,
+            "Cleaned merged land diff": 0.004793456,
+            "Updated LTEX records": 8.2661e-05,
+            "Converted merged diff to LAND records": 0.007338179,
+            "Saved plugin and app config": 0.001502237
+          }
+        }
+      },
+      "speedup": 1.1809554254307884,
+      "samples": {
+        "baseline": [
+          {
+            "seconds": 0.10880425999994259,
+            "peak_rss_kib": 200724,
+            "phases_seconds": {
+              "Parsed plugins": 0.005181168000000001,
+              "Built reference and modded landmasses": 0.052534374,
+              "Created merged reference baseline": 5.05e-06,
+              "Merged land diffs and repaired seams": 0.015204529000000001,
+              "Saved conflict summary images": 0.008989377,
+              "Cleaned merged land diff": 0.008961647,
+              "Updated LTEX records": 7.137e-05,
+              "Converted merged diff to LAND records": 0.011252629,
+              "Saved plugin and app config": 0.0015468679999999999
+            },
+            "output": {
+              "sha256_except_generation_time": "1b3c8f94773643fa1eeb0c1bc3f623fca9922473e9f4e5fbe34eb51042cf9461",
+              "files": 1
+            }
+          },
+          {
+            "seconds": 0.11415335699985008,
+            "peak_rss_kib": 198752,
+            "phases_seconds": {
+              "Parsed plugins": 0.006111752,
+              "Built reference and modded landmasses": 0.056527576,
+              "Created merged reference baseline": 5.51e-06,
+              "Merged land diffs and repaired seams": 0.016066005,
+              "Saved conflict summary images": 0.009214098,
+              "Cleaned merged land diff": 0.009308419,
+              "Updated LTEX records": 8.131999999999999e-05,
+              "Converted merged diff to LAND records": 0.01150846,
+              "Saved plugin and app config": 0.001382137
+            },
+            "output": {
+              "sha256_except_generation_time": "1b3c8f94773643fa1eeb0c1bc3f623fca9922473e9f4e5fbe34eb51042cf9461",
+              "files": 1
+            }
+          },
+          {
+            "seconds": 0.11132264199977726,
+            "peak_rss_kib": 201548,
+            "phases_seconds": {
+              "Parsed plugins": 0.005110657,
+              "Built reference and modded landmasses": 0.056310614,
+              "Created merged reference baseline": 5.57e-06,
+              "Merged land diffs and repaired seams": 0.014942029,
+              "Saved conflict summary images": 0.009254609,
+              "Cleaned merged land diff": 0.009366469,
+              "Updated LTEX records": 7.890000000000001e-05,
+              "Converted merged diff to LAND records": 0.01150108,
+              "Saved plugin and app config": 0.0014874480000000002
+            },
+            "output": {
+              "sha256_except_generation_time": "1b3c8f94773643fa1eeb0c1bc3f623fca9922473e9f4e5fbe34eb51042cf9461",
+              "files": 1
+            }
+          },
+          {
+            "seconds": 0.11001840599965362,
+            "peak_rss_kib": 198208,
+            "phases_seconds": {
+              "Parsed plugins": 0.005570759,
+              "Built reference and modded landmasses": 0.056174164,
+              "Created merged reference baseline": 4.87e-06,
+              "Merged land diffs and repaired seams": 0.01520676,
+              "Saved conflict summary images": 0.009028777,
+              "Cleaned merged land diff": 0.009082277,
+              "Updated LTEX records": 7.0991e-05,
+              "Converted merged diff to LAND records": 0.011154088,
+              "Saved plugin and app config": 0.001360737
+            },
+            "output": {
+              "sha256_except_generation_time": "1b3c8f94773643fa1eeb0c1bc3f623fca9922473e9f4e5fbe34eb51042cf9461",
+              "files": 1
+            }
+          },
+          {
+            "seconds": 0.10379664400034017,
+            "peak_rss_kib": 199184,
+            "phases_seconds": {
+              "Parsed plugins": 0.005110577,
+              "Built reference and modded landmasses": 0.051189058,
+              "Created merged reference baseline": 5.04e-06,
+              "Merged land diffs and repaired seams": 0.014209064,
+              "Saved conflict summary images": 0.008859317,
+              "Cleaned merged land diff": 0.008989337000000002,
+              "Updated LTEX records": 0.00010045999999999998,
+              "Converted merged diff to LAND records": 0.010963238,
+              "Saved plugin and app config": 0.001583459
+            },
+            "output": {
+              "sha256_except_generation_time": "1b3c8f94773643fa1eeb0c1bc3f623fca9922473e9f4e5fbe34eb51042cf9461",
+              "files": 1
+            }
+          },
+          {
+            "seconds": 0.10727205200009848,
+            "peak_rss_kib": 196448,
+            "phases_seconds": {
+              "Parsed plugins": 0.00575394,
+              "Built reference and modded landmasses": 0.05145912,
+              "Created merged reference baseline": 5.13e-06,
+              "Merged land diffs and repaired seams": 0.016033343,
+              "Saved conflict summary images": 0.008920497,
+              "Cleaned merged land diff": 0.009227418000000001,
+              "Updated LTEX records": 8.9911e-05,
+              "Converted merged diff to LAND records": 0.011230459,
+              "Saved plugin and app config": 0.0019033000000000001
+            },
+            "output": {
+              "sha256_except_generation_time": "1b3c8f94773643fa1eeb0c1bc3f623fca9922473e9f4e5fbe34eb51042cf9461",
+              "files": 1
+            }
+          },
+          {
+            "seconds": 0.10712834100013424,
+            "peak_rss_kib": 195672,
+            "phases_seconds": {
+              "Parsed plugins": 0.005265888000000001,
+              "Built reference and modded landmasses": 0.051066667,
+              "Created merged reference baseline": 5.2e-06,
+              "Merged land diffs and repaired seams": 0.01712592,
+              "Saved conflict summary images": 0.008892657,
+              "Cleaned merged land diff": 0.009857252,
+              "Updated LTEX records": 0.00010311,
+              "Converted merged diff to LAND records": 0.010810696,
+              "Saved plugin and app config": 0.001485688
+            },
+            "output": {
+              "sha256_except_generation_time": "1b3c8f94773643fa1eeb0c1bc3f623fca9922473e9f4e5fbe34eb51042cf9461",
+              "files": 1
+            }
+          }
+        ],
+        "candidate": [
+          {
+            "seconds": 0.09213240200006112,
+            "peak_rss_kib": 200392,
+            "phases_seconds": {
+              "Parsed plugins": 0.005101706,
+              "Built reference and modded landmasses": 0.050021532,
+              "Created merged reference baseline": 5.57e-06,
+              "Merged land diffs and repaired seams": 0.010350665,
+              "Saved conflict summary images": 0.007418038,
+              "Cleaned merged land diff": 0.004610774000000001,
+              "Updated LTEX records": 8.2661e-05,
+              "Converted merged diff to LAND records": 0.007176158,
+              "Saved plugin and app config": 0.001660238
+            },
+            "output": {
+              "sha256_except_generation_time": "1b3c8f94773643fa1eeb0c1bc3f623fca9922473e9f4e5fbe34eb51042cf9461",
+              "files": 1
+            }
+          },
+          {
+            "seconds": 0.09121864799999457,
+            "peak_rss_kib": 198068,
+            "phases_seconds": {
+              "Parsed plugins": 0.006574514,
+              "Built reference and modded landmasses": 0.047942861,
+              "Created merged reference baseline": 5.5e-06,
+              "Merged land diffs and repaired seams": 0.010070713,
+              "Saved conflict summary images": 0.00774983,
+              "Cleaned merged land diff": 0.005420229,
+              "Updated LTEX records": 8.006e-05,
+              "Converted merged diff to LAND records": 0.007922332,
+              "Saved plugin and app config": 0.0019903900000000003
+            },
+            "output": {
+              "sha256_except_generation_time": "1b3c8f94773643fa1eeb0c1bc3f623fca9922473e9f4e5fbe34eb51042cf9461",
+              "files": 1
+            }
+          },
+          {
+            "seconds": 0.09342563900008827,
+            "peak_rss_kib": 197728,
+            "phases_seconds": {
+              "Parsed plugins": 0.004958045,
+              "Built reference and modded landmasses": 0.053883271999999996,
+              "Created merged reference baseline": 5.68e-06,
+              "Merged land diffs and repaired seams": 0.010523925,
+              "Saved conflict summary images": 0.007569329,
+              "Cleaned merged land diff": 0.004793456,
+              "Updated LTEX records": 7.445e-05,
+              "Converted merged diff to LAND records": 0.007338179,
+              "Saved plugin and app config": 0.0013405370000000002
+            },
+            "output": {
+              "sha256_except_generation_time": "1b3c8f94773643fa1eeb0c1bc3f623fca9922473e9f4e5fbe34eb51042cf9461",
+              "files": 1
+            }
+          },
+          {
+            "seconds": 0.09469191600010163,
+            "peak_rss_kib": 198528,
+            "phases_seconds": {
+              "Parsed plugins": 0.006220713,
+              "Built reference and modded landmasses": 0.051951762000000005,
+              "Created merged reference baseline": 5.21e-06,
+              "Merged land diffs and repaired seams": 0.010395605,
+              "Saved conflict summary images": 0.00776165,
+              "Cleaned merged land diff": 0.0049360160000000005,
+              "Updated LTEX records": 8.287099999999999e-05,
+              "Converted merged diff to LAND records": 0.00755657,
+              "Saved plugin and app config": 0.001360447
+            },
+            "output": {
+              "sha256_except_generation_time": "1b3c8f94773643fa1eeb0c1bc3f623fca9922473e9f4e5fbe34eb51042cf9461",
+              "files": 1
+            }
+          },
+          {
+            "seconds": 0.09120526700007758,
+            "peak_rss_kib": 199156,
+            "phases_seconds": {
+              "Parsed plugins": 0.007082677000000001,
+              "Built reference and modded landmasses": 0.048522665000000006,
+              "Created merged reference baseline": 6.04e-06,
+              "Merged land diffs and repaired seams": 0.010649315,
+              "Saved conflict summary images": 0.007414339,
+              "Cleaned merged land diff": 0.004695475,
+              "Updated LTEX records": 9.392e-05,
+              "Converted merged diff to LAND records": 0.007283248000000001,
+              "Saved plugin and app config": 0.001627879
+            },
+            "output": {
+              "sha256_except_generation_time": "1b3c8f94773643fa1eeb0c1bc3f623fca9922473e9f4e5fbe34eb51042cf9461",
+              "files": 1
+            }
+          },
+          {
+            "seconds": 0.09390303200007111,
+            "peak_rss_kib": 197884,
+            "phases_seconds": {
+              "Parsed plugins": 0.006777905,
+              "Built reference and modded landmasses": 0.050695515999999996,
+              "Created merged reference baseline": 5.21e-06,
+              "Merged land diffs and repaired seams": 0.010849017,
+              "Saved conflict summary images": 0.007608289,
+              "Cleaned merged land diff": 0.004833416,
+              "Updated LTEX records": 7.687e-05,
+              "Converted merged diff to LAND records": 0.007842342,
+              "Saved plugin and app config": 0.001502237
+            },
+            "output": {
+              "sha256_except_generation_time": "1b3c8f94773643fa1eeb0c1bc3f623fca9922473e9f4e5fbe34eb51042cf9461",
+              "files": 1
+            }
+          },
+          {
+            "seconds": 0.09064774499984196,
+            "peak_rss_kib": 198464,
+            "phases_seconds": {
+              "Parsed plugins": 0.006680205,
+              "Built reference and modded landmasses": 0.048950527,
+              "Created merged reference baseline": 5.9e-06,
+              "Merged land diffs and repaired seams": 0.010294254000000001,
+              "Saved conflict summary images": 0.007460159,
+              "Cleaned merged land diff": 0.004690545,
+              "Updated LTEX records": 9.173999999999999e-05,
+              "Converted merged diff to LAND records": 0.007302498,
+              "Saved plugin and app config": 0.0014059370000000001
+            },
+            "output": {
+              "sha256_except_generation_time": "1b3c8f94773643fa1eeb0c1bc3f623fca9922473e9f4e5fbe34eb51042cf9461",
+              "files": 1
+            }
+          }
+        ]
+      }
+    }
+  }
+}

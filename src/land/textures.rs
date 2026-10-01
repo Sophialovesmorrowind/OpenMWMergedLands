@@ -4,7 +4,7 @@ use anyhow::{Error, bail};
 use const_default::ConstDefault;
 use log::trace;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use tes3::esp::{LandscapeTexture, ObjectFlags};
 
 #[derive(Eq, PartialEq, Hash, Default, Copy, Clone, Debug, Ord, PartialOrd)]
@@ -80,6 +80,7 @@ impl TryFrom<IndexVTEX> for IndexLTEX {
 /// Supports up to [`u16::MAX`] textures.
 pub struct RemappedTextures {
     inner: HashMap<IndexVTEX, IndexVTEX>,
+    fallback: OnceLock<IndexVTEX>,
 }
 
 impl RemappedTextures {
@@ -87,6 +88,7 @@ impl RemappedTextures {
         assert!(len < u16::MAX as usize, "exceeded 65535 textures");
         Self {
             inner: HashMap::with_capacity(len),
+            fallback: OnceLock::new(),
         }
     }
 
@@ -131,12 +133,14 @@ impl RemappedTextures {
     /// `VTEX` index 1. Prefer the first real texture so invalid indices do not render as black
     /// default-texture squares.
     pub fn fallback_texture_index(&self) -> IndexVTEX {
-        self.inner
-            .values()
-            .copied()
-            .filter(|idx| *idx != IndexVTEX::default())
-            .min()
-            .unwrap_or_default()
+        *self.fallback.get_or_init(|| {
+            self.inner
+                .values()
+                .copied()
+                .filter(|idx| *idx != IndexVTEX::default())
+                .min()
+                .unwrap_or_default()
+        })
     }
 }
 
@@ -237,6 +241,7 @@ impl KnownTextures {
     ) {
         let (old_id, new_id) = self.add_texture(plugin, texture);
         assert_ne!(IndexVTEX::from(new_id).0, 0);
+        remapped_textures.fallback.take();
         if remapped_textures
             .inner
             .insert(old_id.into(), new_id.into())
@@ -320,5 +325,54 @@ impl KnownTextures {
 
         self.inner.insert(texture.id.clone(), known_texture);
         next_index
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{IndexVTEX, KnownTextures, RemappedTextures};
+    use crate::io::parsed_plugins::ParsedPlugin;
+    use std::sync::Arc;
+    use tes3::esp::LandscapeTexture;
+
+    #[test]
+    fn fallback_uses_first_real_texture_after_compaction() {
+        let remapped = RemappedTextures::from(&[true, false, true, false, true]);
+        assert_eq!(remapped.fallback_texture_index(), IndexVTEX::new(1));
+        assert_eq!(remapped.fallback_texture_index(), IndexVTEX::new(1));
+
+        let defaults_only = RemappedTextures::from(&[true, false, false]);
+        assert_eq!(defaults_only.fallback_texture_index(), IndexVTEX::default());
+    }
+
+    #[test]
+    fn fallback_is_refreshed_after_inserting_and_replacing_remappings() {
+        let plugin = Arc::new(ParsedPlugin::empty("textures.esp"));
+        let first = LandscapeTexture {
+            id: "first".into(),
+            index: Some(5),
+            ..LandscapeTexture::default()
+        };
+        let second = LandscapeTexture {
+            id: "second".into(),
+            index: Some(5),
+            ..LandscapeTexture::default()
+        };
+        let mut known = KnownTextures::new();
+        let mut bootstrap = RemappedTextures::new(&known);
+        known.add_remapped_texture(&plugin, &first, &mut bootstrap);
+        known.add_remapped_texture(&plugin, &second, &mut bootstrap);
+
+        let mut remapped = RemappedTextures::new(&known);
+        assert_eq!(remapped.fallback_texture_index(), IndexVTEX::default());
+
+        known.add_remapped_texture(&plugin, &second, &mut remapped);
+        assert_eq!(remapped.fallback_texture_index(), IndexVTEX::new(2));
+
+        known.add_remapped_texture(&plugin, &first, &mut remapped);
+        assert_eq!(remapped.fallback_texture_index(), IndexVTEX::new(1));
+
+        known.add_remapped_texture(&plugin, &second, &mut remapped);
+        assert_eq!(remapped.fallback_texture_index(), IndexVTEX::new(2));
     }
 }

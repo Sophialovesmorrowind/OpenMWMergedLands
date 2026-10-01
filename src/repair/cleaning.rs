@@ -13,39 +13,15 @@ use log::{debug, warn};
 use std::sync::Arc;
 use tes3::esp::{Landscape, LandscapeTexture};
 
-#[cfg(test)]
-fn has_difference<U: RelativeTo, const T: usize>(
-    lhs: Option<&RelativeTerrainMap<U, T>>,
-    rhs: Option<&RelativeTerrainMap<U, T>>,
-) -> bool {
-    let Some(lhs) = lhs else {
-        return false;
-    };
-
-    let Some(rhs) = rhs else {
-        return false;
-    };
-
-    for coords in lhs.iter_grid() {
-        let actual = lhs.get_value(coords);
-        let expected = rhs.get_value(coords);
-        if actual != expected {
-            return true;
-        }
-    }
-
-    false
-}
-
 fn differs_from_landscape<U: RelativeTo, const T: usize>(
     merged: Option<&RelativeTerrainMap<U, T>>,
-    loaded: Option<&TerrainMap<U, T>>,
+    load: impl FnOnce() -> Option<TerrainMap<U, T>>,
 ) -> bool {
     let Some(merged) = merged else {
         return false;
     };
 
-    let Some(loaded) = loaded else {
+    let Some(loaded) = load() else {
         return true;
     };
 
@@ -62,17 +38,17 @@ fn has_any_difference_from_loaded_landscape(
     merged: &LandscapeDiff,
     loaded: Option<&Landscape>,
 ) -> bool {
-    let height_map = loaded.and_then(try_calculate_height_map);
-    let vertex_normals = loaded.and_then(vertex_normals);
-    let world_map_data = loaded.and_then(world_map_data);
-    let vertex_colors = loaded.and_then(vertex_colors);
-    let texture_indices = loaded.and_then(texture_indices);
-
-    differs_from_landscape(merged.height_map.as_ref(), height_map.as_ref())
-        || differs_from_landscape(merged.vertex_normals.as_ref(), vertex_normals.as_ref())
-        || differs_from_landscape(merged.world_map_data.as_ref(), world_map_data.as_ref())
-        || differs_from_landscape(merged.vertex_colors.as_ref(), vertex_colors.as_ref())
-        || differs_from_landscape(merged.texture_indices.as_ref(), texture_indices.as_ref())
+    differs_from_landscape(merged.height_map.as_ref(), || {
+        loaded.and_then(try_calculate_height_map)
+    }) || differs_from_landscape(merged.vertex_normals.as_ref(), || {
+        loaded.and_then(vertex_normals)
+    }) || differs_from_landscape(merged.world_map_data.as_ref(), || {
+        loaded.and_then(world_map_data)
+    }) || differs_from_landscape(merged.vertex_colors.as_ref(), || {
+        loaded.and_then(vertex_colors)
+    }) || differs_from_landscape(merged.texture_indices.as_ref(), || {
+        loaded.and_then(texture_indices)
+    })
 }
 
 fn update_known_textures(plugin: &Arc<ParsedPlugin>, known_textures: &mut KnownTextures) {
@@ -86,23 +62,15 @@ fn update_known_textures(plugin: &Arc<ParsedPlugin>, known_textures: &mut KnownT
 pub fn clean_landmass_diff(landmass: &mut LandmassDiff, loaded_landmass: &Landmass) {
     assert_eq!(repair_landmass_seams(landmass), 0);
 
-    let mut unmodified = Vec::new();
-    let mut num_unmodified_from_loaded_landscape = 0;
-
-    for (coords, land) in &mut landmass.land {
-        if !has_any_difference_from_loaded_landscape(land, loaded_landmass.land.get(coords)) {
-            unmodified.push(*coords);
-            num_unmodified_from_loaded_landscape += 1;
-        }
-    }
+    let before = landmass.land.len();
+    landmass.land.retain(|coords, land| {
+        has_any_difference_from_loaded_landscape(land, loaded_landmass.land.get(coords))
+    });
+    let num_unmodified_from_loaded_landscape = before - landmass.land.len();
 
     debug!(
         "Removing {num_unmodified_from_loaded_landscape} LAND records unmodified from loaded landscape"
     );
-
-    for coords in unmodified.drain(..) {
-        landmass.land.remove(&coords);
-    }
 }
 
 /// Remove any unused [`crate::land::textures::KnownTexture`] from the [`KnownTextures`].
@@ -175,31 +143,44 @@ pub fn clean_known_textures(
 
 #[cfg(test)]
 mod tests {
-    use super::has_difference;
+    use super::differs_from_landscape;
     use crate::land::grid_access::Index2D;
     use crate::merge::relative_terrain_map::RelativeTerrainMap;
+    use std::cell::Cell;
 
     #[test]
-    fn has_difference_is_false_when_maps_are_identical() {
-        let lhs = RelativeTerrainMap::<i32, 2>::empty([[1, 2], [3, 4]]);
-        let rhs = RelativeTerrainMap::<i32, 2>::empty([[1, 2], [3, 4]]);
-
-        assert!(!has_difference(Some(&lhs), Some(&rhs)));
+    fn absent_merged_map_does_not_load_unneeded_terrain() {
+        let loads = Cell::new(0);
+        assert!(!differs_from_landscape::<i32, 2>(None, || {
+            loads.set(loads.get() + 1);
+            Some([[1, 2], [3, 4]])
+        }));
+        assert_eq!(loads.get(), 0);
     }
 
     #[test]
-    fn has_difference_is_true_when_any_cell_differs() {
-        let mut lhs = RelativeTerrainMap::<i32, 2>::empty([[1, 2], [3, 4]]);
-        let rhs = RelativeTerrainMap::<i32, 2>::empty([[1, 2], [3, 4]]);
-
-        lhs.set_value(Index2D::new(1, 0), 20);
-        assert!(has_difference(Some(&lhs), Some(&rhs)));
+    fn present_merged_map_differs_from_absent_loaded_terrain() {
+        let merged = RelativeTerrainMap::<i32, 2>::empty([[1, 2], [3, 4]]);
+        assert!(differs_from_landscape(Some(&merged), || None));
     }
 
     #[test]
-    fn has_difference_returns_false_when_missing_input_map() {
-        let lhs = RelativeTerrainMap::<i32, 2>::empty([[1, 2], [3, 4]]);
-        assert!(!has_difference(Some(&lhs), None));
-        assert!(!has_difference::<i32, 2>(None, Some(&lhs)));
+    fn merged_map_equal_to_loaded_winner_has_no_difference() {
+        let mut merged = RelativeTerrainMap::<i32, 2>::empty([[1, 2], [3, 4]]);
+        merged.set_value(Index2D::new(1, 0), 20);
+        assert!(!differs_from_landscape(Some(&merged), || Some([
+            [1, 20],
+            [3, 4]
+        ])));
+    }
+
+    #[test]
+    fn merged_map_different_from_loaded_winner_is_retained() {
+        let mut merged = RelativeTerrainMap::<i32, 2>::empty([[1, 2], [3, 4]]);
+        merged.set_value(Index2D::new(1, 0), 20);
+        assert!(differs_from_landscape(Some(&merged), || Some([
+            [1, 2],
+            [3, 4]
+        ])));
     }
 }

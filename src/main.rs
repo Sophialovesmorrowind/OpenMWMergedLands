@@ -1,6 +1,5 @@
 use crate::io::app_config::{CONFIG_FILE_NAME, MergedLandsConfig};
 use crate::io::meta_schema::{ConflictStrategy, MetaType};
-use crate::io::openmw_cfg::{OpenMWCfgSource, OpenMWConfig};
 use crate::io::openmw_paths::default_config_dir;
 use crate::io::parsed_plugins::{
     DataDirs, ParsedPlugin, ParsedPlugins, PluginFilter, PluginListSource, load_openmw_cfg,
@@ -27,7 +26,7 @@ use simplelog::{
 use std::any::Any;
 use std::collections::HashMap;
 use std::fs::{self, File};
-use std::io::{IsTerminal, Read, Write, stdin, stdout};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::exit;
 use std::sync::Arc;
@@ -60,9 +59,19 @@ impl Landmass {
         }
     }
 
+    #[cfg(test)]
     fn insert_land(&mut self, coords: Vec2<i32>, plugin: &Arc<ParsedPlugin>, land: &Landscape) {
+        self.insert_land_owned(coords, plugin, land.clone());
+    }
+
+    fn insert_land_owned(
+        &mut self,
+        coords: Vec2<i32>,
+        plugin: &Arc<ParsedPlugin>,
+        land: Landscape,
+    ) {
         self.plugins.insert(coords, plugin.clone());
-        self.land.insert(coords, land.clone());
+        self.land.insert(coords, land);
     }
 
     /// Returns the [Landscape] entries ordered by `x` and `y` coordinates.
@@ -311,6 +320,10 @@ mod cli {
         fn default_mode_is_openmw() {
             let cli = Cli::try_parse_from(["merged_lands"]).expect("CLI should parse");
             assert!(cli.is_openmw_mode());
+            assert!(matches!(
+                cli.openmw_cfg_source(None),
+                Some(OpenMWCfgSource::Default)
+            ));
             assert_eq!(cli.output_file_name(), "Merged Lands.omwaddon");
         }
 
@@ -513,122 +526,6 @@ fn openmw_cfg_path_to_dir(path: &Path) -> PathBuf {
     path.to_path_buf()
 }
 
-fn should_prompt_for_openmw_cfg(
-    cli: &Cli,
-    app_config: &MergedLandsConfig,
-    app_config_created: bool,
-) -> bool {
-    app_config_created
-        && cli.is_openmw_mode()
-        && cli.openmw_cfg.is_none()
-        && app_config.openmw_cfg().is_none()
-}
-
-fn maybe_prompt_for_openmw_cfg(
-    cli: &Cli,
-    app_config: &mut MergedLandsConfig,
-    app_config_dir: &Path,
-    app_config_created: bool,
-) -> Result<()> {
-    if !should_prompt_for_openmw_cfg(cli, app_config, app_config_created) {
-        return Ok(());
-    }
-
-    if !stdin().is_terminal() {
-        debug!("Skipping first-run OpenMW config prompt because stdin is not interactive");
-        return Ok(());
-    }
-
-    let openmw_cfg = prompt_for_openmw_cfg()?;
-    app_config.set_openmw_cfg(&openmw_cfg);
-    app_config.save(app_config_dir)?;
-    let app_config_path = app_config_dir.join(CONFIG_FILE_NAME);
-
-    println!();
-    println!(
-        "Saved default OpenMW configuration path to {}.",
-        app_config_path.to_string_lossy()
-    );
-    println!("You can change it later by editing `openmw_cfg` in that file.");
-    println!("Continuing with merge...");
-
-    info!(
-        "Saved OpenMW configuration path to {}",
-        app_config_path.to_string_lossy()
-    );
-
-    Ok(())
-}
-
-fn prompt_for_openmw_cfg() -> Result<PathBuf> {
-    loop {
-        println!();
-        println!("First run setup: choose OpenMW configuration source.");
-        println!("1. Provide a path to openmw.cfg or a directory containing it");
-        println!("2. Try OpenMW auto-detect");
-        print!("Enter 1 or 2: ");
-        stdout()
-            .flush()
-            .with_context(|| anyhow!("Unable to write OpenMW config prompt"))?;
-
-        let mut selection = String::new();
-        stdin()
-            .read_line(&mut selection)
-            .with_context(|| anyhow!("Unable to read OpenMW config prompt"))?;
-
-        match selection.trim() {
-            "1" => {
-                if let Some(path) = prompt_for_explicit_openmw_cfg()? {
-                    return Ok(path);
-                }
-            }
-            "2" => match autodetect_openmw_cfg_path() {
-                Ok(path) => return Ok(path),
-                Err(error) => println!("Auto-detect could not load openmw.cfg: {error:?}"),
-            },
-            _ => println!("Please enter 1 or 2."),
-        }
-    }
-}
-
-fn prompt_for_explicit_openmw_cfg() -> Result<Option<PathBuf>> {
-    print!("Path to openmw.cfg or its directory: ");
-    stdout()
-        .flush()
-        .with_context(|| anyhow!("Unable to write OpenMW config path prompt"))?;
-
-    let mut input = String::new();
-    stdin()
-        .read_line(&mut input)
-        .with_context(|| anyhow!("Unable to read OpenMW config path"))?;
-
-    let Some(path) = prompted_path(&input) else {
-        println!("Path cannot be empty.");
-        return Ok(None);
-    };
-
-    match explicit_openmw_cfg_path(path) {
-        Ok(path) => Ok(Some(path)),
-        Err(error) => {
-            println!("Could not load openmw.cfg: {error:?}");
-            Ok(None)
-        }
-    }
-}
-
-fn prompted_path(input: &str) -> Option<PathBuf> {
-    let path = input.trim().trim_matches(|c| c == '"' || c == '\'');
-    (!path.is_empty()).then(|| PathBuf::from(path.replace("\\ ", " ")))
-}
-
-fn explicit_openmw_cfg_path(path: PathBuf) -> Result<PathBuf> {
-    OpenMWConfig::load(OpenMWCfgSource::Path(path)).map(|config| config.root_config_file)
-}
-
-fn autodetect_openmw_cfg_path() -> Result<PathBuf> {
-    OpenMWConfig::load(OpenMWCfgSource::Default).map(|config| config.root_config_file)
-}
-
 fn wait_for_user_exit(wait_for_exit: bool) {
     if !wait_for_exit {
         return;
@@ -683,9 +580,13 @@ fn merge_all(cli: &Cli) -> Result<()> {
 
     let app_config_dir = app_config_location.dir().to_path_buf();
     let loaded_app_config = MergedLandsConfig::load_or_create(&app_config_dir)?;
-    let app_config_created = loaded_app_config.created;
+    if loaded_app_config.created {
+        debug!(
+            "Created default app config {}",
+            app_config_dir.join(CONFIG_FILE_NAME).to_string_lossy()
+        );
+    }
     let mut app_config = loaded_app_config.config;
-    maybe_prompt_for_openmw_cfg(cli, &mut app_config, &app_config_dir, app_config_created)?;
 
     // Determine whether we're in default OpenMW mode (`openmw.cfg`) or classic Morrowind mode
     // (`--vanilla`, using a single `Data Files` directory + Morrowind.ini). These two paths
@@ -1026,7 +927,7 @@ fn try_copy_landscape_and_remap_textures(
             }
         }
 
-        landmass.insert_land(coords, plugin, &updated_land);
+        landmass.insert_land_owned(coords, plugin, updated_land);
     }
 
     if landmass.land.is_empty() {
@@ -1057,15 +958,12 @@ fn try_create_landmass(
     try_copy_landscape_and_remap_textures(plugin, &remapped_textures)
 }
 
-/// Returns a "merged" [Landscape] combining `rhs` and `lhs` by stomping over
-/// any changes in `lhs` with the records from `rhs`.
-fn merge_tes3_landscape(lhs: &Landscape, rhs: &Landscape) -> Landscape {
-    let mut land = lhs.clone();
-
-    let mut old_data = landscape_flags(lhs);
+/// Updates the winning [Landscape] with the included records from `rhs`.
+fn merge_tes3_landscape_into(land: &mut Landscape, rhs: &Landscape) {
+    let mut old_data = landscape_flags(land);
     let new_data = landscape_flags(rhs);
 
-    assert_eq!(lhs.flags, rhs.flags, "expected identical LAND flags");
+    assert_eq!(land.flags, rhs.flags, "expected identical LAND flags");
     assert!(
         !rhs.flags.contains(ObjectFlags::DELETED),
         "tried to add deleted LAND"
@@ -1103,8 +1001,6 @@ fn merge_tes3_landscape(lhs: &Landscape, rhs: &Landscape) -> Landscape {
     }
 
     land.landscape_flags = old_data;
-
-    land
 }
 
 /// Given a [`ParsedPlugin`] and a specific [Landscape], returns [`LandData`] representing
@@ -1173,27 +1069,27 @@ fn filter_landscape_to_allowed_data(plugin: &ParsedPlugin, land: &Landscape) -> 
 /// respecting the current master-before-plugin ordering used by the tool.
 fn merge_tes3_landmass_into(merged: &mut Landmass, next: &Landmass) {
     for (coords, land) in &next.land {
-        let merged_land = if let Some(existing) = merged.land.get(coords) {
-            merge_tes3_landscape(existing, land)
+        if let Some(existing) = merged.land.get_mut(coords) {
+            merge_tes3_landscape_into(existing, land);
         } else {
-            land.clone()
-        };
+            merged.land.insert(*coords, land.clone());
+        }
 
-        merged.land.insert(*coords, merged_land);
         merged.plugins.insert(*coords, next.plugin.clone());
     }
 }
 
 fn merge_allowed_landmass_into(merged: &mut Landmass, next: &Landmass) {
-    let mut filtered = Landmass::new(next.plugin.clone());
-
     for (coords, land) in &next.land {
         if let Some(land) = filter_landscape_to_allowed_data(&next.plugin, land) {
-            filtered.insert_land(*coords, &next.plugin, &land);
+            if let Some(existing) = merged.land.get_mut(coords) {
+                merge_tes3_landscape_into(existing, &land);
+                merged.plugins.insert(*coords, next.plugin.clone());
+            } else {
+                merged.insert_land_owned(*coords, &next.plugin, land);
+            }
         }
     }
-
-    merge_tes3_landmass_into(merged, &filtered);
 }
 
 /// Creates a [`LandmassDiff`] representing the set of [`LandscapeDiff`] between the
@@ -1343,7 +1239,16 @@ fn merge_landscape_diff(
     old: &LandscapeDiff,
     new: &LandscapeDiff,
 ) -> LandscapeDiff {
-    let mut merged = old.clone();
+    let mut merged = LandscapeDiff {
+        coords: old.coords,
+        flags: old.flags,
+        height_map: None,
+        vertex_normals: None,
+        world_map_data: None,
+        vertex_colors: None,
+        texture_indices: None,
+        plugins: old.plugins.clone(),
+    };
     merged.plugins.push((plugin.clone(), new.modified_data()));
 
     let coords = merged.coords;
@@ -1366,14 +1271,17 @@ fn merge_landscape_diff(
         load_order_auto_strategy(plugin.meta.height_map.conflict_strategy),
     );
 
-    if let Some(vertex_normals) = merged.vertex_normals.as_ref() {
-        merged.vertex_normals = Some(LandscapeDiff::apply_mask(
-            vertex_normals,
-            merged
-                .height_map
-                .as_ref()
-                .map(RelativeTerrainMap::differences),
-        ));
+    if let Some(vertex_normals) = merged.vertex_normals.as_mut() {
+        if let Some(height_map) = merged.height_map.as_ref() {
+            let differences = height_map.differences();
+            vertex_normals.clean_some(
+                differences
+                    .iter_grid()
+                    .filter(|coords| !differences.get(*coords)),
+            );
+        } else {
+            vertex_normals.clean_all();
+        }
     }
 
     if merged.vertex_normals.is_modified() {
@@ -1467,8 +1375,8 @@ fn create_merged_lands_from_reference(reference: &Landmass) -> LandmassDiff {
 mod tests {
     use super::{
         create_merged_lands_from_reference, create_reference_and_modded_landmasses,
-        merge_landmass_into, merge_load_order_texture_indices, prompted_path,
-        run_merge_on_worker_thread, should_prompt_for_openmw_cfg,
+        merge_landmass_into, merge_load_order_texture_indices, merge_tes3_landscape_into,
+        run_merge_on_worker_thread,
     };
     use crate::io::app_config::{CONFIG_FILE_NAME, MergedLandsConfig};
     use crate::io::meta_schema::{MergeSettings, PluginMeta};
@@ -1733,7 +1641,7 @@ mod tests {
             data_local.to_string_lossy(),
         );
         for plugin in plugin_names {
-            writeln!(&mut cfg, "content=\"{plugin}\"").expect("write openmw.cfg content");
+            writeln!(&mut cfg, "content={plugin}").expect("write openmw.cfg content");
         }
         fs::write(&openmw_cfg, cfg).expect("write openmw.cfg");
 
@@ -1787,53 +1695,65 @@ mod tests {
     }
 
     #[test]
-    fn prompted_path_strips_quotes_and_whitespace() {
-        assert_eq!(
-            prompted_path("  \"/tmp/openmw/openmw.cfg\"  "),
-            Some(PathBuf::from("/tmp/openmw/openmw.cfg"))
-        );
-        assert_eq!(prompted_path("   "), None);
-    }
+    fn landscape_merge_preserves_fields_absent_or_excluded_from_incoming_record() {
+        let mut land = fixture_land_with_vertex_color((3, -4), 32, Vec3::new(11, 22, 33));
+        land.landscape_flags |= LandscapeFlags::USES_TEXTURES;
+        land.texture_indices = Some(TextureIndices {
+            data: Box::new([[1; 16]; 16]),
+        });
+        land.vertex_normals = Some(VertexNormals {
+            data: Box::new([[[7, -3, 2]; 65]; 65]),
+        });
+        land.world_map_data = Some(tes3::esp::WorldMapData {
+            data: Box::new([[4; 9]; 9]),
+        });
+        let mut expected = land.clone();
 
-    #[test]
-    fn prompted_path_accepts_windows_paths_with_spaces() {
-        let path = r"C:\Users\Pandorable\Documents\My Games\OpenMW\openmw.cfg";
+        let mut incoming = fixture_land_with_vertex_color((99, -99), 96, Vec3::new(44, 55, 66));
+        incoming.texture_indices = Some(TextureIndices {
+            data: Box::new([[7; 16]; 16]),
+        });
+        incoming.vertex_normals = Some(VertexNormals {
+            data: Box::new([[[-17, 23, 91]; 65]; 65]),
+        });
+        incoming.world_map_data = Some(tes3::esp::WorldMapData {
+            data: Box::new([[9; 9]; 9]),
+        });
 
-        assert_eq!(prompted_path(path), Some(PathBuf::from(path)));
-        assert_eq!(
-            prompted_path(&format!("\"{path}\"")),
-            Some(PathBuf::from(path))
-        );
-    }
+        // Populated fields without an inclusion flag must leave the winning record intact.
+        incoming.landscape_flags = LandscapeFlags::UNKNOWN;
+        merge_tes3_landscape_into(&mut land, &incoming);
+        assert_eq!(land, expected);
 
-    #[test]
-    fn prompted_path_accepts_shell_escaped_spaces() {
-        assert_eq!(
-            prompted_path(r"/home/pandorable/My\ Games/OpenMW/openmw.cfg"),
-            Some(PathBuf::from("/home/pandorable/My Games/OpenMW/openmw.cfg"))
-        );
-    }
+        // Included heights can update independently of normals, colors, and textures.
+        incoming.landscape_flags = LandscapeFlags::USES_VERTEX_HEIGHTS_AND_NORMALS;
+        incoming.vertex_normals = None;
+        expected.vertex_heights = incoming.vertex_heights.clone();
+        expected.world_map_data = incoming.world_map_data.clone();
+        merge_tes3_landscape_into(&mut land, &incoming);
+        assert_eq!(land, expected);
 
-    #[test]
-    fn first_run_prompt_only_applies_to_unspecified_openmw_cfg() {
-        let cli = crate::cli::Cli::try_parse_from(["merged_lands"]).expect("parse cli args");
-        let config = MergedLandsConfig::default();
+        // Missing heights and world map data preserve their previous values.
+        incoming.vertex_heights = None;
+        incoming.vertex_normals = Some(VertexNormals {
+            data: Box::new([[[-17, 23, 91]; 65]; 65]),
+        });
+        incoming.world_map_data = None;
+        expected.vertex_normals = incoming.vertex_normals.clone();
+        merge_tes3_landscape_into(&mut land, &incoming);
+        assert_eq!(land, expected);
 
-        assert!(should_prompt_for_openmw_cfg(&cli, &config, true));
-        assert!(!should_prompt_for_openmw_cfg(&cli, &config, false));
+        incoming.landscape_flags =
+            LandscapeFlags::USES_VERTEX_COLORS | LandscapeFlags::USES_TEXTURES;
+        expected.vertex_colors = incoming.vertex_colors.clone();
+        expected.texture_indices = incoming.texture_indices.clone();
+        merge_tes3_landscape_into(&mut land, &incoming);
+        assert_eq!(land, expected);
 
-        let cli_with_path =
-            crate::cli::Cli::try_parse_from(["merged_lands", "--openmw-cfg", "/tmp/openmw.cfg"])
-                .expect("parse cli args");
-        assert!(!should_prompt_for_openmw_cfg(&cli_with_path, &config, true));
-
-        let vanilla =
-            crate::cli::Cli::try_parse_from(["merged_lands", "--vanilla"]).expect("parse cli args");
-        assert!(!should_prompt_for_openmw_cfg(&vanilla, &config, true));
-
-        let mut saved_config = MergedLandsConfig::default();
-        saved_config.set_openmw_cfg(Path::new("/tmp/openmw.cfg"));
-        assert!(!should_prompt_for_openmw_cfg(&cli, &saved_config, true));
+        incoming.vertex_colors = None;
+        incoming.texture_indices = None;
+        merge_tes3_landscape_into(&mut land, &incoming);
+        assert_eq!(land, expected);
     }
 
     #[test]

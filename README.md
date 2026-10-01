@@ -42,8 +42,9 @@ merged_lands_bin\
 
 To run the tool, open a terminal (e.g. `cmd`) in the `merged_lands` directory.
 
-By default, the tool reads your OpenMW configuration from the platform-default `openmw.cfg`
-location (respecting `OPENMW_CONFIG` / `OPENMW_CONFIG_DIR`).
+By default, the tool follows OpenMW's installed engine configuration and its `config=` profiles,
+respecting `OPENMW_CONFIG` / `OPENMW_CONFIG_DIR`. Without an engine base config, it reads the
+platform-default user `openmw.cfg`.
 
 ```bash
 # Default OpenMW behavior
@@ -89,11 +90,10 @@ By default, `merged_lands.toml` is created in the same config directory OpenMW u
 If the OpenMW config directory cannot be used, the tool falls back to writing `merged_lands.toml`
 next to the executable. You can override the config location with `--config-dir`.
 
-If `merged_lands.toml` does not exist, it is created during startup. On an interactive first run in
-OpenMW mode, the tool will ask whether to enter an explicit `openmw.cfg` path or try OpenMW
-auto-detection. The selected root `openmw.cfg` path is saved as `openmw_cfg` for future runs. In
-noninteractive runs, the prompt is skipped and auto-detection is used unless `--openmw-cfg` was
-passed.
+If `merged_lands.toml` does not exist, it is created during startup. OpenMW configuration is
+always auto-detected when neither `--openmw-cfg` nor a saved `openmw_cfg` path is set. First runs
+start merging immediately without a configuration selector. To use a different configuration,
+pass `--openmw-cfg` or set `openmw_cfg` in `merged_lands.toml`.
 
 The file is also updated after a successful run to record generated output names. On first creation
 only, it is seeded with a default ignore list for generated or non-land-merge plugins that are
@@ -217,8 +217,11 @@ If you do not pass any mode flag, the tool runs in OpenMW mode. Config source pr
 3. OpenMW auto-detection
 
 The built-in loader checks `OPENMW_CONFIG` first (a file or directory), then searches
-`OPENMW_CONFIG_DIR` in order for the first `openmw.cfg`, then uses the platform-default
-config directory above. `OPENMW_CONFIG_DIR` is a colon-separated path list on Unix and a
+`OPENMW_CONFIG_DIR` in order for the first `openmw.cfg`, then checks the OpenMW executable's
+local `openmw.cfg` and the stock Unix global config at `/etc/openmw/openmw.cfg`. If neither
+exists, it uses the platform-default user config directory above. The engine base config's
+`config=` entries select the user profile; no additional user config is implicitly appended.
+`OPENMW_CONFIG_DIR` is a colon-separated path list on Unix and a
 semicolon-separated list on Windows. Leading `~` is expanded for explicit paths and environment
 overrides. An invalid explicit path reports an error instead of silently selecting another config.
 
@@ -256,21 +259,26 @@ Config loading is implemented in this repository, following OpenMW's
 and [path syntax](https://openmw.readthedocs.io/en/stable/reference/modding/paths.html).
 The selected file is the root of the chain; it can point to profile directories with `config=`.
 The loader handles nested configs, repeated/circular references, `replace=data`, `replace=content`,
-and `replace=config`. For nested ordering it follows the engine source: the first listed config
+`replace=config`, and `replace=replace`. For nested ordering it follows the engine source: the first listed config
 and its descendants load before the next sibling. A missing optional config is skipped; an
 unreadable or malformed existing config reports its path and, for syntax errors, its line.
 
 Paths are relative to the file declaring them. Quoted paths use `&` to escape the next character;
 backslashes stay literal, and text after a closing path quote is ignored. Only whole lines starting
 with `#` are comments; a `#` inside a value remains part of that value. Unknown engine settings
-are ignored. Existing quoted `content="Plugin.esp"` entries remain supported for compatibility.
+are ignored. Content values are literal filenames: write `content=Plugin.esp`; quotes in
+`content="Plugin.esp"` remain part of the filename, as they do in OpenMW. Duplicate `data-local`
+or `resources` settings in one file are errors; higher config layers can override them.
 
 The `?userconfig?` and `?userdata?` tokens refer to the standard platform locations, independent
 of the selected profile and `user-data=`. `?local?` uses the OpenMW executable found beside this
 tool, on `PATH`, or in the standard Windows/macOS installation location; it falls back to the
 tool's directory. `?global?` uses `/usr/share/games/openmw` on Linux and
 `/Library/Application Support/openmw` on macOS. For custom engine installation layouts, use
-explicit paths in the config. Parsing does not edit config files or create directories.
+explicit paths in the config. Append relative token suffixes directly, such as `?userdata?data`.
+A suffix beginning with `/` replaces the token's directory on Unix, matching OpenMW's path
+handling. Parsing does not edit config files or create directories. See the
+[compatibility audit](docs/openmw-config-compatibility.md) for verified cases and remaining scope.
 
 ### What changes in OpenMW mode
 

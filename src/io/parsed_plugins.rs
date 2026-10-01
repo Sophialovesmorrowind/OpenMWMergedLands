@@ -92,17 +92,7 @@ impl DataDirs {
 
     fn resolve_uncached(&self, name: &str) -> Option<PathBuf> {
         for dir in self.dirs.iter().rev() {
-            let candidate: PathBuf = [dir.as_path(), Path::new(name)].iter().collect();
-            if candidate.is_file() {
-                return Some(candidate);
-            }
-        }
-
-        for dir in self.dirs.iter().rev() {
-            let candidate: PathBuf = [dir.as_path(), Path::new(name)].iter().collect();
-            if let Some(resolved) = self.resolve_existing_path_case_insensitive(&candidate)
-                && resolved.is_file()
-            {
+            if let Some(resolved) = self.resolve_file_case_insensitive(dir, Path::new(name)) {
                 return Some(resolved);
             }
         }
@@ -132,16 +122,19 @@ impl DataDirs {
         found
     }
 
-    fn resolve_existing_path_case_insensitive(&self, path: &Path) -> Option<PathBuf> {
-        if path.exists() {
-            return Some(path.to_path_buf());
+    fn resolve_file_case_insensitive(&self, directory: &Path, path: &Path) -> Option<PathBuf> {
+        // Keep the direct lookup fast until a directory has been indexed. Once indexed,
+        // its cached entries also let absent sidecars skip repeated filesystem probes.
+        if !self.case_cache.borrow().contains_key(directory) {
+            let candidate = directory.join(path);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
         }
 
-        let mut resolved = if path.is_absolute() {
-            PathBuf::new()
-        } else {
-            PathBuf::from(".")
-        };
+        // DataDirs constructors already resolve the directory's spelling. Start there
+        // instead of rechecking every ancestor for each missing plugin or meta file.
+        let mut resolved = directory.to_path_buf();
 
         for component in path.components() {
             match component {
@@ -149,17 +142,32 @@ impl DataDirs {
                 Component::RootDir | Component::ParentDir => resolved.push(component.as_os_str()),
                 Component::CurDir => {}
                 Component::Normal(name) => {
-                    let exact = resolved.join(name);
-                    if exact.exists() {
-                        resolved = exact;
+                    let cached = self.case_cache.borrow();
+                    let found = if let Some(entries) = cached.get(&resolved) {
+                        let found = entries.get(&os_str_case_key(name))?;
+                        // On case-sensitive filesystems both spellings can exist. Honor
+                        // an exact spelling before falling back to the folded cache entry.
+                        let exact = resolved.join(name);
+                        if found.file_name() != Some(name) && exact.exists() {
+                            exact
+                        } else {
+                            found.clone()
+                        }
                     } else {
-                        resolved = self.find_child_case_insensitive(&resolved, name)?;
-                    }
+                        drop(cached);
+                        let exact = resolved.join(name);
+                        if exact.exists() {
+                            exact
+                        } else {
+                            self.find_child_case_insensitive(&resolved, name)?
+                        }
+                    };
+                    resolved = found;
                 }
             }
         }
 
-        resolved.exists().then_some(resolved)
+        resolved.is_file().then_some(resolved)
     }
 }
 
@@ -941,6 +949,50 @@ mod tests {
             .expect("resolve plugin");
         assert!(resolved_plugin.is_file());
         assert_path_eq_ignore_ascii_case(&resolved_plugin, &plugin_path);
+
+        fs::remove_dir_all(root).expect("cleanup temp dir");
+    }
+
+    #[test]
+    fn data_dirs_prioritize_case_insensitive_overrides_over_exact_lower_entries() {
+        let root = create_temp_data_dir();
+        let low = root.join("low");
+        let high = root.join("high");
+        fs::create_dir_all(low.join("sub dir")).expect("low directory");
+        fs::create_dir_all(high.join("Sub Dir")).expect("high directory");
+        create_empty_file(&low.join("plugin.esp"));
+        create_empty_file(&low.join("sub dir/nested.esp"));
+        create_empty_file(&high.join("Plugin.ESP"));
+        create_empty_file(&high.join("Sub Dir/Nested.ESP"));
+
+        for warm_cache in [false, true] {
+            let dirs = DataDirs::from_ordered(vec![low.clone(), high.clone()]).expect("data dirs");
+            if warm_cache {
+                assert!(dirs.resolve("missing.mergedlands.toml").is_none());
+            }
+            assert_eq!(dirs.resolve("plugin.esp"), Some(high.join("Plugin.ESP")));
+            assert_eq!(
+                dirs.resolve("sub dir/nested.esp"),
+                Some(high.join("Sub Dir/Nested.ESP"))
+            );
+        }
+
+        fs::remove_dir_all(root).expect("cleanup temp dir");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn indexed_data_dirs_keep_exact_spelling_when_case_variants_coexist() {
+        let root = create_temp_data_dir();
+        for name in ["Plugin.esp", "plugin.ESP"] {
+            create_empty_file(&root.join(name));
+        }
+
+        for name in ["Plugin.esp", "plugin.ESP"] {
+            let dirs = DataDirs::single(root.clone());
+            assert!(dirs.resolve("absent.mergedlands.toml").is_none());
+            assert_eq!(dirs.resolve(name), Some(root.join(name)));
+        }
 
         fs::remove_dir_all(root).expect("cleanup temp dir");
     }

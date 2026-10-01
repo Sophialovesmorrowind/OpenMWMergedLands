@@ -112,10 +112,11 @@ fn calculate_height_map<const T: usize>(vertex_heights: &VertexHeights) -> Terra
     grid_height
 }
 
-/// Calculates the vertex normals for the [`TerrainMap`].
-pub fn calculate_vertex_normals_map<const T: usize>(
+/// Calculates the normal at one vertex, reusing the last row or column on cell edges.
+pub(crate) fn calculate_vertex_normal<const T: usize>(
     height_map: &TerrainMap<i32, T>,
-) -> TerrainMap<Vec3<i8>, T> {
+    coords: Index2D,
+) -> Vec3<i8> {
     /// On the edge of the cell, reuse the last row or column.
     fn fix_coords<const T: usize>(coords: Index2D) -> Index2D {
         let x = if coords.x + 1 == T {
@@ -133,61 +134,66 @@ pub fn calculate_vertex_normals_map<const T: usize>(
         Index2D::new(x, y)
     }
 
+    let fixed_coords = fix_coords::<T>(coords);
+
+    let coords_right = Index2D::new(fixed_coords.x + 1, fixed_coords.y);
+
+    let h = height_map
+        .get(fixed_coords)
+        .to_f32()
+        .expect("height value should convert to f32")
+        / HEIGHT_MAP_SCALE_FACTOR_F32;
+    let x1 = height_map
+        .get(coords_right)
+        .to_f32()
+        .expect("height value should convert to f32")
+        / HEIGHT_MAP_SCALE_FACTOR_F32;
+    let v1 = Vec3 {
+        x: 128f32 / HEIGHT_MAP_SCALE_FACTOR_F32,
+        y: 0f32,
+        z: x1 - h,
+    };
+
+    let coords_up = Index2D::new(fixed_coords.x, fixed_coords.y + 1);
+    let y1 = height_map
+        .get(coords_up)
+        .to_f32()
+        .expect("height value should convert to f32")
+        / HEIGHT_MAP_SCALE_FACTOR_F32;
+    let v2 = Vec3 {
+        x: 0f32,
+        y: 128f32 / HEIGHT_MAP_SCALE_FACTOR_F32,
+        z: y1 - h,
+    };
+
+    let mut normal = Vec3 {
+        x: v1.y * v2.z - v1.z * v2.y,
+        y: v1.z * v2.x - v1.x * v2.z,
+        z: v1.x * v2.y - v1.y * v2.x,
+    };
+
+    let squared: f32 = normal.x.powi(2) + normal.y.powi(2) + normal.z.powi(2);
+    let hyp: f32 = squared.sqrt() / 127.0f32;
+
+    normal.x /= hyp;
+    normal.y /= hyp;
+    normal.z /= hyp;
+
+    Vec3::new(
+        f32_to_i8_saturating(normal.x),
+        f32_to_i8_saturating(normal.y),
+        f32_to_i8_saturating(normal.z),
+    )
+}
+
+/// Calculates the vertex normals for the [`TerrainMap`].
+pub fn calculate_vertex_normals_map<const T: usize>(
+    height_map: &TerrainMap<i32, T>,
+) -> TerrainMap<Vec3<i8>, T> {
     let mut terrain = [[Vec3::default(); T]; T];
-
     for coords in height_map.iter_grid() {
-        let fixed_coords = fix_coords::<T>(coords);
-
-        let coords_right = Index2D::new(fixed_coords.x + 1, fixed_coords.y);
-
-        let h = height_map
-            .get(fixed_coords)
-            .to_f32()
-            .expect("height value should convert to f32")
-            / HEIGHT_MAP_SCALE_FACTOR_F32;
-        let x1 = height_map
-            .get(coords_right)
-            .to_f32()
-            .expect("height value should convert to f32")
-            / HEIGHT_MAP_SCALE_FACTOR_F32;
-        let v1 = Vec3 {
-            x: 128f32 / HEIGHT_MAP_SCALE_FACTOR_F32,
-            y: 0f32,
-            z: x1 - h,
-        };
-
-        let coords_up = Index2D::new(fixed_coords.x, fixed_coords.y + 1);
-        let y1 = height_map
-            .get(coords_up)
-            .to_f32()
-            .expect("height value should convert to f32")
-            / HEIGHT_MAP_SCALE_FACTOR_F32;
-        let v2 = Vec3 {
-            x: 0f32,
-            y: 128f32 / HEIGHT_MAP_SCALE_FACTOR_F32,
-            z: y1 - h,
-        };
-
-        let mut normal = Vec3 {
-            x: v1.y * v2.z - v1.z * v2.y,
-            y: v1.z * v2.x - v1.x * v2.z,
-            z: v1.x * v2.y - v1.y * v2.x,
-        };
-
-        let squared: f32 = normal.x.powi(2) + normal.y.powi(2) + normal.z.powi(2);
-        let hyp: f32 = squared.sqrt() / 127.0f32;
-
-        normal.x /= hyp;
-        normal.y /= hyp;
-        normal.z /= hyp;
-
-        *terrain.get_mut(coords) = Vec3::new(
-            f32_to_i8_saturating(normal.x),
-            f32_to_i8_saturating(normal.y),
-            f32_to_i8_saturating(normal.z),
-        );
+        *terrain.get_mut(coords) = calculate_vertex_normal(height_map, coords);
     }
-
     terrain
 }
 

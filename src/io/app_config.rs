@@ -179,7 +179,8 @@ impl MergedLandsConfig {
         self.openmw_cfg.as_deref()
     }
 
-    /// Records the root `openmw.cfg` path to use for future `OpenMW` runs.
+    /// Records the root `openmw.cfg` path for config roundtrip tests.
+    #[cfg(test)]
     pub fn set_openmw_cfg(&mut self, path: &Path) {
         self.openmw_cfg = Some(path.to_string_lossy().into_owned());
     }

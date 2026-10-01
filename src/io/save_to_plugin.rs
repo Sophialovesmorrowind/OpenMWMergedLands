@@ -1,5 +1,5 @@
 use crate::cli::SortOrder;
-use crate::io::parsed_plugins::{DataDirs, ParsedPlugin, ParsedPlugins, meta_name, sort_plugins};
+use crate::io::parsed_plugins::{DataDirs, ParsedPlugins, meta_name, sort_plugins};
 use crate::land::conversions::convert_terrain_map;
 use crate::land::height_map::calculate_vertex_heights_tes3;
 use crate::land::landscape_diff::LandscapeDiff;
@@ -13,7 +13,6 @@ use std::collections::HashSet;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::Path;
-use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tes3::esp::{
     FixedString, Header, Landscape, LandscapeFlags, Plugin, TES3Object, TextureIndices,
@@ -123,11 +122,13 @@ pub fn convert_landmass_diff_to_landmass(
     remapped_textures: &RemappedTextures,
 ) -> Landmass {
     let mut new_landmass = Landmass::new(landmass.plugin.clone());
+    new_landmass.land.reserve(landmass.land.len());
+    new_landmass.plugins.reserve(landmass.land.len());
 
-    for (coords, land) in landmass.sorted() {
+    for (coords, land) in &landmass.land {
         let landscape = convert_landscape_diff_to_landscape(land, remapped_textures);
-        let last_plugin = land.plugins.last().expect("safe").clone().0;
-        new_landmass.insert_land(*coords, &last_plugin, &landscape);
+        let last_plugin = &land.plugins.last().expect("safe").0;
+        new_landmass.insert_land_owned(*coords, last_plugin, landscape);
     }
 
     new_landmass
@@ -165,26 +166,27 @@ pub fn save_plugin(
         .with_context(|| anyhow!("Unable to save file {output_name}"))?;
 
     let mut plugin = Plugin::new();
+    plugin
+        .objects
+        .reserve(1 + known_textures.len() + landmass.land.len());
+    let sorted_textures = known_textures.sorted();
 
     debug!("Determining plugin dependencies");
 
     let masters: Option<Vec<(String, u64)>> = {
         let mut dependencies = HashSet::new();
 
-        let mut add_dependency =
-            |dependency: &Arc<ParsedPlugin>| dependencies.insert(dependency.name.clone());
-
         // Add plugins that contribute textures.
-        for texture in known_textures.sorted() {
-            add_dependency(&texture.plugin);
+        for texture in &sorted_textures {
+            dependencies.insert(texture.plugin.name.as_str());
         }
 
         // Add plugins used for the land.
         for plugin in landmass.plugins.values() {
-            add_dependency(plugin);
+            dependencies.insert(plugin.name.as_str());
         }
 
-        let mut masters: Vec<_> = dependencies.drain().collect();
+        let mut masters: Vec<_> = dependencies.into_iter().map(str::to_owned).collect();
 
         sort_plugins(data_dirs, &mut masters, sort_order)
             .with_context(|| anyhow!("Unknown load order for {output_name} dependencies"))?;
@@ -223,7 +225,7 @@ pub fn save_plugin(
     plugin.objects.push(TES3Object::Header(header));
 
     debug!("Saving {} LTEX records", known_textures.len());
-    for known_texture in known_textures.sorted() {
+    for known_texture in sorted_textures {
         trace!(
             "Texture | {:>4} | {:<30} | {}",
             known_texture.index().as_u16(),

@@ -4,7 +4,7 @@ use crate::land::grid_access::{GridAccessor2D, Index2D, SquareGridIterator};
 use crate::land::landscape_diff::LandscapeDiff;
 use crate::land::terrain_map::{Vec2, Vec3};
 use crate::merge::conflict::{ConflictResolver, ConflictType};
-use crate::merge::relative_terrain_map::RelativeTerrainMap;
+use crate::merge::relative_terrain_map::{IsModified, RelativeTerrainMap};
 use crate::merge::relative_to::RelativeTo;
 use crate::term_style::bold_red;
 use anyhow::{Context, Result, anyhow};
@@ -201,6 +201,10 @@ pub fn save_image<U: RelativeTo + ConflictResolver, const T: usize>(
         return;
     };
 
+    if !rhs.is_modified() {
+        return;
+    }
+
     let mut diff_img = ImageBuffer::new(usize_to_u32(T), usize_to_u32(T));
 
     let mut num_major_conflicts = 0;
@@ -209,40 +213,27 @@ pub fn save_image<U: RelativeTo + ConflictResolver, const T: usize>(
     let params = crate::merge::conflict::ConflictParams::default();
 
     for coords in lhs.iter_grid() {
+        // Unchanged plugin samples are black regardless of the conflict classification.
+        // ImageBuffer is zero-filled, so skip both value reconstruction and averaging.
+        if !rhs.has_difference(coords) {
+            continue;
+        }
+
         let actual = lhs.get_value(coords);
         let expected = rhs.get_value(coords);
-        let has_difference = rhs.has_difference(coords);
 
         // TODO(dvd): #feature Use a gradient so that smaller conflicts can be seen.
         match actual.average(expected, &params) {
             None => {
-                let color = if has_difference {
-                    Rgb::from([0, 255u8, 0])
-                } else {
-                    Rgb::from([0, 0, 0])
-                };
-
-                *diff_img.get_mut(coords) = color;
+                *diff_img.get_mut(coords) = Rgb::from([0, 255u8, 0]);
             }
             Some(ConflictType::Minor(_)) => {
-                let color = if has_difference {
-                    num_minor_conflicts += 1;
-                    Rgb::from([255u8, 255u8, 0])
-                } else {
-                    Rgb::from([0, 0, 0])
-                };
-
-                *diff_img.get_mut(coords) = color;
+                num_minor_conflicts += 1;
+                *diff_img.get_mut(coords) = Rgb::from([255u8, 255u8, 0]);
             }
             Some(ConflictType::Major(_)) => {
-                let color = if has_difference {
-                    num_major_conflicts += 1;
-                    Rgb::from([255u8, 0, 0])
-                } else {
-                    Rgb::from([0, 0, 0])
-                };
-
-                *diff_img.get_mut(coords) = color;
+                num_major_conflicts += 1;
+                *diff_img.get_mut(coords) = Rgb::from([255u8, 0, 0]);
             }
         }
     }
@@ -395,12 +386,14 @@ pub fn save_landmass_images(
 
 #[cfg(test)]
 mod tests {
-    use super::{save_landmass_images, scale_to_u8};
+    use super::{save_image, save_landmass_images, scale_to_u8};
     use crate::LandmassDiff;
     use crate::io::parsed_plugins::ParsedPlugin;
+    use crate::land::grid_access::Index2D;
     use crate::land::landscape_diff::LandscapeDiff;
     use crate::land::terrain_map::Vec2;
-    use std::collections::HashMap;
+    use crate::merge::relative_terrain_map::RelativeTerrainMap;
+    use std::collections::{HashMap, HashSet};
     use std::fs;
     use std::sync::Arc;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -416,6 +409,52 @@ mod tests {
         assert_eq!(scale_to_u8(10.0, 10.0, 20.0), 0);
         assert_eq!(scale_to_u8(20.0, 10.0, 20.0), 255);
         assert_eq!(scale_to_u8(15.0, 10.0, 20.0), 128);
+    }
+
+    #[test]
+    fn conflict_image_preserves_changed_colors_and_unchanged_black_pixels() {
+        let output_dir = std::env::temp_dir().join(format!(
+            "merged_lands_images_colors_{}_{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("clock before unix epoch")
+                .as_nanos()
+        ));
+        let mut lhs = RelativeTerrainMap::<i32, 4>::empty([[100; 4]; 4]);
+        let mut rhs = RelativeTerrainMap::<i32, 4>::empty([[100; 4]; 4]);
+        lhs.set_value(Index2D::new(0, 0), 110);
+        lhs.set_value(Index2D::new(3, 3), 1000);
+        rhs.set_value(Index2D::new(0, 0), 110);
+        rhs.set_value(Index2D::new(1, 0), 1000);
+        rhs.set_value(Index2D::new(2, 0), 101);
+        let mut written = HashSet::new();
+
+        save_image(
+            &output_dir,
+            Vec2::new(0, 0),
+            &ParsedPlugin::empty("Plugin.esp"),
+            "height_map",
+            Some(&lhs),
+            Some(&rhs),
+            &mut written,
+        );
+
+        let image = image::open(output_dir.join("Conflicts/height_map_0_0_DIFF_Plugin.esp.png"))
+            .expect("conflict image")
+            .to_rgb8();
+        assert_eq!(image.dimensions(), (16, 16));
+        assert_eq!(image.get_pixel(0, 0).0, [0, 255, 0]);
+        assert_eq!(image.get_pixel(4, 0).0, [255, 0, 0]);
+        assert_eq!(image.get_pixel(8, 0).0, [255, 255, 0]);
+        assert_eq!(image.get_pixel(12, 12).0, [0, 0, 0]);
+        assert!(
+            output_dir
+                .join("Conflicts/height_map_0_0_MERGED.png")
+                .is_file()
+        );
+
+        fs::remove_dir_all(output_dir).expect("cleanup images");
     }
 
     #[test]
