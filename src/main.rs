@@ -720,6 +720,13 @@ fn merge_all(cli: &Cli) -> Result<()> {
         merge_landmass_into(&mut merged_lands, modded_landmass);
     }
 
+    remove_heightless_overrides_of_ignored_cells(
+        &mut merged_lands,
+        &raw_load_order_landmass,
+        &parsed_plugins,
+        &app_config,
+    );
+
     // We fix seams as a post-processing step because individual mods can introduce
     // tears into the landscape that would be fixed by subsequent mods. (e.g. patches)
     // If we try to fix the seams early, sadness results.
@@ -1182,6 +1189,42 @@ fn create_reference_and_modded_landmasses(
         modded_landmasses,
         Arc::new(raw_load_order_landmass),
     )
+}
+
+/// A texture-only predecessor cannot replace an ignored winner's height-bearing LAND:
+/// `OpenMW` replaces the whole record, so that would discard the original terrain heights.
+/// Earlier terrain with its own height map can still be restored as usual.
+fn remove_heightless_overrides_of_ignored_cells(
+    merged: &mut LandmassDiff,
+    loaded: &Landmass,
+    parsed_plugins: &ParsedPlugins,
+    config: &MergedLandsConfig,
+) {
+    for plugin in parsed_plugins.masters.iter().chain(&parsed_plugins.plugins) {
+        for coords in config.ignored_cells_for_plugin(&plugin.name) {
+            let is_ignored_winner = loaded
+                .plugins
+                .get(&coords)
+                .is_some_and(|winner| winner.name.eq_ignore_ascii_case(&plugin.name));
+            let loaded_has_heights = loaded.land.get(&coords).is_some_and(|land| {
+                land.vertex_heights.is_some()
+                    && land
+                        .landscape_flags
+                        .contains(LandscapeFlags::USES_VERTEX_HEIGHTS_AND_NORMALS)
+            });
+            let merged_lacks_heights = merged
+                .land
+                .get(&coords)
+                .is_some_and(|land| land.height_map.is_none());
+            if is_ignored_winner && loaded_has_heights && merged_lacks_heights {
+                merged.land.remove(&coords);
+                debug!(
+                    "({:>4}, {:>4}) | Skipping heightless override of ignored {} terrain",
+                    coords.x, coords.y, plugin.name
+                );
+            }
+        }
+    }
 }
 
 /// LAND texture indices are categorical winner data instead of numeric deltas. Load order is
@@ -1891,6 +1934,128 @@ mod tests {
                 0
             );
         });
+    }
+
+    #[test]
+    fn e2e_default_tr_exception_leaves_hunza_terrain_to_the_original_plugin() {
+        for vanilla in [false, true] {
+            let root = unique_temp_dir("e2e_tr_hunza");
+            let data_files = root.join("Data Files");
+            let output_dir = root.join("Output");
+            let config_dir = root.join("Config");
+            let merged_lands_dir = root.join("MergedLands");
+            for dir in [
+                &data_files,
+                &output_dir,
+                &merged_lands_dir.join("Conflicts"),
+            ] {
+                fs::create_dir_all(dir).expect("create fixture directory");
+            }
+
+            // Reproduce the source discontinuity without distributing TR's records.
+            // Two neighboring, included cells still need an ordinary seam repair.
+            let ignored_cells = [(-9, -46), (-9, -47), (-10, -46), (-10, -47)];
+            // Distant Seafloor supplies texture-only predecessors in the real modlist.
+            // Keeping those as overrides would discard TR's original heights in OpenMW.
+            let mut seafloor = Plugin::new();
+            seafloor.objects.push(TES3Object::Header(Header::default()));
+            for coords in ignored_cells {
+                seafloor.objects.push(TES3Object::Landscape(Landscape {
+                    grid: coords,
+                    landscape_flags: LandscapeFlags::USES_TEXTURES | LandscapeFlags::UNKNOWN,
+                    texture_indices: Some(TextureIndices::default()),
+                    ..Landscape::default()
+                }));
+            }
+            let seafloor_name = "SeafloorFixture.esm";
+            seafloor
+                .save_path(data_files.join(seafloor_name))
+                .expect("save seafloor fixture");
+            let lands = ignored_cells
+                .into_iter()
+                .map(|coords| {
+                    let height = if coords == (-10, -47) { -2048 } else { 10056 };
+                    fixture_land(coords, height, Some(1))
+                })
+                .chain(
+                    [((-8, -46), 8000), ((-7, -46), 8800)]
+                        .map(|(coords, height)| fixture_land(coords, height, Some(1))),
+                )
+                .collect();
+            let plugin_name = "tr_mainland.ESM";
+            write_plugin_file(
+                &data_files.join(plugin_name),
+                plugin_name,
+                lands,
+                vec![LandscapeTexture {
+                    id: "HunzaFixtureGrass".to_string(),
+                    index: Some(0),
+                    file_name: Some("fixture_grass.dds".to_string()),
+                    ..LandscapeTexture::default()
+                }],
+                vec![],
+            );
+            let mut args = vec![
+                "merged_lands".to_string(),
+                "--config-dir".to_string(),
+                config_dir.to_string_lossy().into_owned(),
+                "--merged-lands-dir".to_string(),
+                merged_lands_dir.to_string_lossy().into_owned(),
+                "--output-file-dir".to_string(),
+                output_dir.to_string_lossy().into_owned(),
+                "--output-file".to_string(),
+                "HunzaOut.esp".to_string(),
+            ];
+            if vanilla {
+                args.extend([
+                    "--vanilla".to_string(),
+                    "--data-files-dir".to_string(),
+                    data_files.to_string_lossy().into_owned(),
+                    seafloor_name.to_string(),
+                    plugin_name.to_string(),
+                ]);
+            } else {
+                let openmw_cfg = root.join("openmw.cfg");
+                fs::write(
+                    &openmw_cfg,
+                    format!(
+                        "data=\"{}\"\ncontent={seafloor_name}\ncontent={plugin_name}\n",
+                        data_files.to_string_lossy()
+                    ),
+                )
+                .expect("write openmw.cfg");
+                args.extend([
+                    "--openmw-cfg".to_string(),
+                    openmw_cfg.to_string_lossy().into_owned(),
+                ]);
+            }
+            let cli = crate::cli::Cli::try_parse_from(args).expect("parse CLI");
+            run_merge_on_worker_thread(cli).expect("merge should succeed");
+
+            let output = load_output_plugin(&output_dir.join("HunzaOut.esp"));
+            let lands: Vec<_> = output.objects_of_type::<Landscape>().collect();
+            assert_eq!(lands.len(), 2, "only the ordinary seam needs output");
+            assert!(lands.iter().all(|land| !ignored_cells.contains(&land.grid)));
+            for land in lands {
+                let heights = crate::land::height_map::try_calculate_height_map(land)
+                    .expect("output heights");
+                if land.grid == (-8, -46) {
+                    assert_eq!(
+                        heights[32][0], 8000,
+                        "excluded TR neighbor cannot pull this edge"
+                    );
+                    assert_eq!(heights[32][64], 8400, "included seam is repaired");
+                } else {
+                    assert_eq!(land.grid, (-7, -46));
+                    assert_eq!(heights[32][0], 8400, "included seam is repaired");
+                }
+            }
+            let saved = MergedLandsConfig::load(&config_dir)
+                .expect("load generated defaults")
+                .expect("config exists");
+            assert_eq!(saved.ignored_cells_for_plugin(plugin_name).len(), 4);
+            fs::remove_dir_all(root).expect("cleanup temp dir");
+        }
     }
 
     #[test]
