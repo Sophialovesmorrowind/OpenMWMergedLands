@@ -16,7 +16,7 @@ import struct
 import subprocess
 import tomllib
 
-from perf_sweep import positive_int, run_once
+from perf_sweep import positive_int, run_once, supports_conflict_images
 
 
 def file_hash(path):
@@ -68,6 +68,7 @@ def compare(args):
     root = args.work_dir.resolve()
     root.mkdir(parents=True, exist_ok=False)
     binaries = {"baseline": args.baseline.resolve(), "candidate": args.candidate.resolve()}
+    image_flags = {name: supports_conflict_images(binary) for name, binary in binaries.items()}
     cfg = args.openmw_cfg.resolve()
     app_cfg = args.app_config.resolve()
     app_settings = tomllib.loads(app_cfg.read_text(encoding="utf-8"))
@@ -84,14 +85,14 @@ def compare(args):
         (run_dir / "Conflicts").mkdir()
         shutil.copyfile(app_cfg, run_dir / "config" / "merged_lands.toml")
         print(f"Starting {name} warmup: {cfg}", flush=True)
-        warmups[name] = run_once(binary, cfg, run_dir, "openmw")
+        warmups[name] = run_once(binary, cfg, run_dir, "openmw", image_flags[name])
         print(f"{name} warmup: {warmups[name]['seconds']:.3f} s, "
               f"{warmups[name]['peak_rss_kib']} KiB peak RSS", flush=True)
     for iteration in range(args.repeats):
         order = list(binaries) if iteration % 2 == 0 else list(reversed(binaries))
         for name in order:
             print(f"Starting {name} sample {iteration + 1}/{args.repeats}", flush=True)
-            sample = run_once(binaries[name], cfg, root / name, "openmw")
+            sample = run_once(binaries[name], cfg, root / name, "openmw", image_flags[name])
             if sample["output"] != warmups[name]["output"]:
                 raise RuntimeError(f"{name} output changed between runs: {root}")
             samples[name].append(sample)

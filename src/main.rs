@@ -160,8 +160,7 @@ mod cli {
     #[command(long_about = None)] // Read from `Cargo.toml`
     pub struct Cli {
         #[arg(long, default_value_t = String::from("."))]
-        /// The directory containing the `Conflicts` folder.
-        /// This is also where the `log_file` is stored.
+        /// The directory for `log_file` and optional `Conflicts` images.
         merged_lands_dir: String,
 
         #[arg(long)]
@@ -225,6 +224,10 @@ mod cli {
         #[arg(long)]
         /// The application will color the LAND vertex colors to show conflicts.
         pub add_debug_vertex_colors: bool,
+
+        #[arg(long)]
+        /// Save conflict PNGs in `Conflicts` under `merged_lands_dir`.
+        pub conflict_images: bool,
 
         #[arg(long)]
         /// The application will wait for the user to hit the ENTER key before closing.
@@ -322,11 +325,19 @@ mod cli {
         fn default_mode_is_openmw() {
             let cli = Cli::try_parse_from(["merged_lands"]).expect("CLI should parse");
             assert!(cli.is_openmw_mode());
+            assert!(!cli.conflict_images);
             assert!(matches!(
                 cli.openmw_cfg_source(None),
                 Some(OpenMWCfgSource::Default)
             ));
             assert_eq!(cli.output_file_name(), "Merged Lands.omwaddon");
+        }
+
+        #[test]
+        fn conflict_images_are_opt_in() {
+            let cli = Cli::try_parse_from(["merged_lands", "--conflict-images"])
+                .expect("CLI should parse");
+            assert!(cli.conflict_images);
         }
 
         #[test]
@@ -740,15 +751,16 @@ fn merge_all(cli: &Cli) -> Result<()> {
     phase_start = Instant::now();
 
     // STEP 4:
-    //  - Produce images of the final merge results.
-    info!(":: Summarizing Conflicts ::");
-
-    let merged_lands_dir = cli.merged_lands_dir();
-    save_landmass_images(&merged_lands_dir, &merged_lands, &modded_landmasses);
-    debug!(
-        "Saved conflict summary images in {:?}",
-        phase_start.elapsed()
-    );
+    //  - Optionally produce images of the final merge results.
+    if cli.conflict_images {
+        info!(":: Summarizing Conflicts ::");
+        let merged_lands_dir = cli.merged_lands_dir();
+        save_landmass_images(&merged_lands_dir, &merged_lands, &modded_landmasses);
+        debug!(
+            "Saved conflict summary images in {:?}",
+            phase_start.elapsed()
+        );
+    }
     phase_start = Instant::now();
 
     let debug_vertex_colors = cli.add_debug_vertex_colors;
@@ -1695,6 +1707,74 @@ mod tests {
         run_merge_on_worker_thread(cli).expect("merge_all should succeed");
 
         (root, output_dir)
+    }
+
+    #[test]
+    fn e2e_conflict_images_require_flag() {
+        let root = unique_temp_dir("e2e_conflict_images");
+        let data_files = root.join("Data Files");
+        let output_dir = root.join("Output");
+        let merged_lands_dir = root.join("MergedLands");
+        let config_dir = root.join("Config");
+        for dir in [&data_files, &output_dir, &merged_lands_dir, &config_dir] {
+            fs::create_dir_all(dir).expect("create fixture directory");
+        }
+
+        let master_name = "Base.esm";
+        let master_path = data_files.join(master_name);
+        write_plugin_file(
+            &master_path,
+            master_name,
+            vec![fixture_land((0, 0), 0, None)],
+            vec![],
+            vec![],
+        );
+        let master_size = fs::metadata(&master_path).expect("master metadata").len();
+        for (name, height) in [("First.esp", 8), ("Second.esp", 16)] {
+            write_plugin_file(
+                &data_files.join(name),
+                name,
+                vec![fixture_land((0, 0), height, None)],
+                vec![],
+                vec![(master_name.to_string(), master_size)],
+            );
+        }
+
+        let mut args = vec![
+            "merged_lands".to_string(),
+            "--vanilla".to_string(),
+            "--data-files-dir".to_string(),
+            data_files.to_string_lossy().into_owned(),
+            "--output-file-dir".to_string(),
+            output_dir.to_string_lossy().into_owned(),
+            "--merged-lands-dir".to_string(),
+            merged_lands_dir.to_string_lossy().into_owned(),
+            "--config-dir".to_string(),
+            config_dir.to_string_lossy().into_owned(),
+            "--sort-order".to_string(),
+            "none".to_string(),
+            master_name.to_string(),
+            "First.esp".to_string(),
+            "Second.esp".to_string(),
+        ];
+
+        let cli = crate::cli::Cli::try_parse_from(&args).expect("parse default args");
+        run_merge_on_worker_thread(cli).expect("default merge should succeed");
+        assert!(output_dir.join("Merged Lands.esp").exists());
+        assert!(!merged_lands_dir.join("Conflicts").exists());
+
+        args.insert(1, "--conflict-images".to_string());
+        let cli = crate::cli::Cli::try_parse_from(&args).expect("parse image args");
+        run_merge_on_worker_thread(cli).expect("image merge should succeed");
+        assert!(
+            fs::read_dir(merged_lands_dir.join("Conflicts"))
+                .expect("read conflict images")
+                .any(|entry| entry
+                    .expect("image entry")
+                    .path()
+                    .extension()
+                    .is_some_and(|ext| ext == "png"))
+        );
     }
 
     fn load_output_plugin(path: &Path) -> Plugin {

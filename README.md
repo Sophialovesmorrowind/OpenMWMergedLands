@@ -47,15 +47,13 @@ Each release also includes SHA-256 and SHA-512 checksum files for every ZIP.
 ## Installation & Usage
 
 1. Create a folder for the tool's executable, e.g. `merged_lands_bin`.
-2. Create a directory in that folder called `Conflicts`.
-3. Place the executable in the `merged_lands_bin` folder.
+2. Place the executable in the `merged_lands_bin` folder.
 
 You should have a directory tree that looks like the following:
 
 ```
 merged_lands_bin\
     merged_lands.exe
-    Conflicts\
 ```
 
 To run the tool, open a terminal (e.g. `cmd`) in the `merged_lands` directory.
@@ -213,7 +211,13 @@ Output directory precedence is:
 
 The tool will save the log file to the `--merged-lands-dir`. This defaults to `.`, or "the current directory".
 
-The tool will save images to a folder `Conflicts` in the `--merged-lands-dir`.
+Pass `--conflict-images` to save conflict PNGs to a `Conflicts` folder in the
+`--merged-lands-dir`. The tool creates the folder when needed. A default run does
+not generate conflict images.
+
+```bash
+./merged_lands --conflict-images
+```
 
 ```
 merged_lands_bin\

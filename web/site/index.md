@@ -152,8 +152,8 @@ It does not emit `CELL` records.
 
 Mods that place a hill and a valley in the same location can still conflict.
 The tool changes terrain; it does not move statics, NPCs, grass, or other placed
-objects to match the new surface. Review the generated conflict images and
-check affected areas in-game.
+objects to match the new surface. Use `--conflict-images` to generate conflict
+images, then review them and check affected areas in-game.
 
 ## Development
 

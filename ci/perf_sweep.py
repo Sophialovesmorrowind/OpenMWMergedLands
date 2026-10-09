@@ -136,12 +136,20 @@ def parse_phases(log_path):
     return phases
 
 
-def run_once(binary, cfg, run_dir, mode):
+def supports_conflict_images(binary):
+    """Older comparison binaries generate images without an opt-in flag."""
+    result = subprocess.run([binary, "--help"], check=True, capture_output=True, text=True)
+    return "--conflict-images" in result.stdout
+
+
+def run_once(binary, cfg, run_dir, mode, conflict_images=False):
     command = [
         str(binary), "--config-dir", str(run_dir / "config"),
         "--merged-lands-dir", str(run_dir), "--output-file-dir", str(run_dir / "output"),
         "--log-level", "off",
     ]
+    if conflict_images:
+        command.append("--conflict-images")
     if mode == "openmw":
         command.extend(["--openmw-cfg", str(cfg)])
     else:
@@ -173,6 +181,7 @@ def run_once(binary, cfg, run_dir, mode):
 def compare(args, root):
     cfg = make_fixture(root, args.grid, args.plugins, args.textures, args.height_step)
     binaries = {"baseline": args.baseline.resolve(), "candidate": args.candidate.resolve()}
+    image_flags = {name: supports_conflict_images(binary) for name, binary in binaries.items()}
     samples = {name: [] for name in binaries}
     expected = None
     for name, binary in binaries.items():
@@ -180,7 +189,7 @@ def compare(args, root):
         (run_dir / "config").mkdir(parents=True)
         (run_dir / "output").mkdir()
         (run_dir / "Conflicts").mkdir()
-        warmup = run_once(binary, cfg, run_dir, args.mode)
+        warmup = run_once(binary, cfg, run_dir, args.mode, image_flags[name])
         if expected is None:
             expected = warmup["output"]
         if warmup["output"] != expected:
@@ -188,7 +197,7 @@ def compare(args, root):
     for iteration in range(args.repeats):
         order = list(binaries) if iteration % 2 == 0 else list(reversed(binaries))
         for name in order:
-            sample = run_once(binaries[name], cfg, root / name, args.mode)
+            sample = run_once(binaries[name], cfg, root / name, args.mode, image_flags[name])
             if sample["output"] != expected:
                 raise RuntimeError(f"{name} output differs from baseline: {root}")
             samples[name].append(sample)
