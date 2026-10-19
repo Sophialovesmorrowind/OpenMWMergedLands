@@ -8,6 +8,11 @@ body { overflow-wrap: anywhere; }
 .site-banner { display: block; width: 100%; height: auto; margin: 0 auto 1.5rem; }
 #links { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.2rem; margin: 1.5rem 0; }
 .download-button { width: 100%; font-weight: bold; }
+.download-icon-linux {
+  text-shadow: -0.5px -0.5px 0 currentColor, 0 -0.5px 0 currentColor, 0.5px -0.5px 0 currentColor,
+    -0.5px 0 0 currentColor, 0.5px 0 0 currentColor,
+    -0.5px 0.5px 0 currentColor, 0 0.5px 0 currentColor, 0.5px 0.5px 0 currentColor;
+}
 .platform-download .small { margin-top: 0.4rem; }
 @media (max-width: 520px) {
   #links { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -29,6 +34,6 @@ a:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
 .skip:focus { position: fixed; left: 1rem; top: 1rem; z-index: 1; padding: 0.3rem 0.5rem; background: #f9f9f9; }
 @media (prefers-color-scheme: dark) {
   .skip:focus { background: #222222; }
-  a.button:visited { color: #222222; }
-  a.button:hover, a.button:focus-visible { color: #222222; background: #c9c9c9; border-color: #c9c9c9; }
+  a.button, a.button:visited { color: #e6e6e6; background: #4a4a4a; border: 1px solid #c9c9c9; }
+  a.button:hover, a.button:focus-visible { color: #ffffff; background: #222222; border-color: #ffffff; }
 }
