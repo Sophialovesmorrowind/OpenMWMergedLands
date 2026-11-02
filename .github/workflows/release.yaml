@@ -18,6 +18,9 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  audit:
+    uses: ./.github/workflows/security.yaml
+
   check:
     runs-on: ubuntu-24.04
     steps:
@@ -43,7 +46,7 @@ jobs:
       - run: python3 -m unittest discover -s ci -p 'test_*.py'
 
   build:
-    needs: check
+    needs: [check, audit]
     strategy:
       fail-fast: false
       matrix:
