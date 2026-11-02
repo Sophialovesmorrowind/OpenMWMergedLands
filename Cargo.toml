@@ -38,4 +38,4 @@ features = ["esp"]
 
 [target.'cfg(windows)'.dependencies]
 # Resolve redirected Documents folders using the same OS API as OpenMW.
-windows-sys = { version = "0.59", features = ["Win32_UI_Shell", "Win32_System_Com"] }
+windows-sys = { version = "0.61", features = ["Win32_UI_Shell", "Win32_System_Com"] }
