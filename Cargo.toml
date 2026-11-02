@@ -11,7 +11,7 @@ wild = "2.2"
 
 # Serialization for meta files to fine tune merge on each plugin.
 serde = { version = "1.0.228", features = ["derive"] }
-toml = "0.5.11"
+toml = "1.1.8"
 
 # Support for bitfields.
 bitflags = "1.3.2"
