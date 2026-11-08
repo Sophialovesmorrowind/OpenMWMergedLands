@@ -19,9 +19,15 @@ if [ -z "${SOUPAULT:-}" ]; then
         fi
         mkdir -p .tools
         archive=.tools/soupault-4.8.0-linux-x86_64.tar.gz
-        curl --fail --show-error --silent --location --retry 3 \
+        if ! curl --fail --show-error --silent --location --retry 3 \
+            --connect-timeout 15 --max-time 120 \
             https://github.com/PataphysicalSociety/soupault/releases/download/4.8.0/soupault-4.8.0-linux-x86_64.tar.gz \
-            --output "$archive"
+            --output "$archive"; then
+            curl --fail --show-error --silent --location --retry 3 \
+                --connect-timeout 15 --max-time 120 \
+                https://files.baturin.org/software/soupault/4.8.0/soupault-4.8.0-linux-x86_64.tar.gz \
+                --output "$archive"
+        fi
         printf '%s  %s\n' dd8ecc792958d88cb217bdf87825626925ea1b0b893311a0662aa99820697974 "$archive" | sha256sum --check -
         tar -xzf "$archive" -C .tools
     fi
