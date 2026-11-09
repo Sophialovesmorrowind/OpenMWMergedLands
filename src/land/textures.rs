@@ -208,10 +208,8 @@ impl KnownTextures {
             .inner
             .get_mut(&texture.id.to_ascii_lowercase())
             .expect("unknown texture ID");
-        if let Some(file_name) = &texture.file_name
-            && known_texture.inner.file_name.as_ref() != Some(file_name)
-        {
-            known_texture.inner.file_name = Some(file_name.into());
+        if known_texture.inner.file_name != texture.file_name {
+            known_texture.inner.file_name.clone_from(&texture.file_name);
             known_texture.plugin = plugin.clone();
         }
     }
@@ -339,6 +337,28 @@ mod tests {
     use crate::io::parsed_plugins::ParsedPlugin;
     use std::sync::Arc;
     use tes3::esp::LandscapeTexture;
+
+    #[test]
+    fn later_ltex_can_clear_the_previous_filename() {
+        let base = Arc::new(ParsedPlugin::empty("Base.esm"));
+        let patch = Arc::new(ParsedPlugin::empty("Patch.esp"));
+        let mut texture = LandscapeTexture {
+            id: "Grass".into(),
+            index: Some(0),
+            file_name: Some("grass.dds".into()),
+            ..LandscapeTexture::default()
+        };
+        let mut known = KnownTextures::new();
+        let mut remapped = RemappedTextures::new(&known);
+        known.add_remapped_texture(&base, &texture, &mut remapped);
+
+        texture.id = "gRaSs".into();
+        texture.file_name = None;
+        known.update_texture(&patch, &texture);
+        let textures = known.sorted();
+        assert!(textures[0].clone_landscape_texture().file_name.is_none());
+        assert_eq!(textures[0].plugin.name, "Patch.esp");
+    }
 
     #[test]
     fn fallback_uses_first_real_texture_after_compaction() {
