@@ -9,6 +9,12 @@ use const_default::ConstDefault;
 /// any differences from that original terrain as a delta, and a boolean grid of values
 /// where `true` indicates tht the difference from the original terrain is not zero.
 pub struct RelativeTerrainMap<U: RelativeTo, const T: usize> {
+    // Keep absent maps small and move present maps without copying their grids.
+    data: Box<RelativeTerrainData<U, T>>,
+}
+
+#[derive(Clone)]
+struct RelativeTerrainData<U: RelativeTo, const T: usize> {
     reference: TerrainMap<U, T>,
     relative: TerrainMap<<U as RelativeTo>::Delta, T>,
     has_difference: TerrainMap<bool, T>,
@@ -23,13 +29,15 @@ impl<U: RelativeTo, const T: usize> SquareGridIterator<T> for RelativeTerrainMap
 impl<U: RelativeTo, const T: usize> RelativeTerrainMap<U, T> {
     /// Creates a [`RelativeTerrainMap`] from an existing reference [`TerrainMap`] without any
     /// differences from the reference.
-    pub const fn empty(reference: TerrainMap<U, T>) -> Self {
+    pub fn empty(reference: TerrainMap<U, T>) -> Self {
         let relative = [[<<U as RelativeTo>::Delta as ConstDefault>::DEFAULT; T]; T];
         let has_difference = [[false; T]; T];
         Self {
-            reference,
-            relative,
-            has_difference,
+            data: Box::new(RelativeTerrainData {
+                reference,
+                relative,
+                has_difference,
+            }),
         }
     }
 
@@ -50,43 +58,47 @@ impl<U: RelativeTo, const T: usize> RelativeTerrainMap<U, T> {
 
     /// Read-only access to the `true` or `false` differences grid.
     pub fn differences(&self) -> &TerrainMap<bool, T> {
-        &self.has_difference
+        &self.data.has_difference
     }
 
     /// Get the value at `coords` by adding the difference to the reference.
     pub fn get_value(&self, coords: Index2D) -> U {
-        <U as RelativeTo>::add(self.reference.get(coords), self.relative.get(coords))
+        <U as RelativeTo>::add(
+            self.data.reference.get(coords),
+            self.data.relative.get(coords),
+        )
     }
 
     /// Set the value at `coords` by calculating a new difference from the reference.
     pub fn set_value(&mut self, coords: Index2D, value: U) {
-        let difference = U::subtract(value, self.reference.get(coords));
-        *self.relative.get_mut(coords) = difference;
-        *self.has_difference.get_mut(coords) = difference != <U as RelativeTo>::Delta::default();
+        let difference = U::subtract(value, self.data.reference.get(coords));
+        *self.data.relative.get_mut(coords) = difference;
+        *self.data.has_difference.get_mut(coords) =
+            difference != <U as RelativeTo>::Delta::default();
     }
 
     /// Get the difference at `coords`.
     pub fn get_difference(&self, coords: Index2D) -> <U as RelativeTo>::Delta {
-        let delta = self.relative.get(coords);
+        let delta = self.data.relative.get(coords);
         if delta == <U as RelativeTo>::Delta::default() {
-            assert!(!self.has_difference.get(coords));
+            assert!(!self.data.has_difference.get(coords));
         } else {
-            assert!(self.has_difference.get(coords));
+            assert!(self.data.has_difference.get(coords));
         }
         delta
     }
 
     /// Returns `true` if there is a difference at `coords` with respect to the reference.
     pub fn has_difference(&self, coords: Index2D) -> bool {
-        if self.has_difference.get(coords) {
+        if self.data.has_difference.get(coords) {
             assert_ne!(
-                self.relative.get(coords),
+                self.data.relative.get(coords),
                 <U as RelativeTo>::Delta::default()
             );
             true
         } else {
             assert_eq!(
-                self.relative.get(coords),
+                self.data.relative.get(coords),
                 <U as RelativeTo>::Delta::default()
             );
             false
@@ -95,11 +107,11 @@ impl<U: RelativeTo, const T: usize> RelativeTerrainMap<U, T> {
 
     /// Remove all differences.
     pub fn clean_all(&mut self) {
-        for v in self.has_difference.as_flattened_mut() {
+        for v in self.data.has_difference.as_flattened_mut() {
             *v = false;
         }
 
-        for v in self.relative.as_flattened_mut() {
+        for v in self.data.relative.as_flattened_mut() {
             *v = <U as RelativeTo>::Delta::default();
         }
     }
@@ -107,8 +119,8 @@ impl<U: RelativeTo, const T: usize> RelativeTerrainMap<U, T> {
     /// Remove differences from all coordinates passed via `iter`.
     pub fn clean_some(&mut self, iter: impl Iterator<Item = Index2D>) {
         for coords in iter {
-            *self.has_difference.get_mut(coords) = false;
-            *self.relative.get_mut(coords) = <U as RelativeTo>::Delta::default();
+            *self.data.has_difference.get_mut(coords) = false;
+            *self.data.relative.get_mut(coords) = <U as RelativeTo>::Delta::default();
         }
     }
 
@@ -131,7 +143,7 @@ pub trait IsModified {
 
 impl<U: RelativeTo, const T: usize> IsModified for RelativeTerrainMap<U, T> {
     fn is_modified(&self) -> bool {
-        self.has_difference.as_flattened().contains(&true)
+        self.data.has_difference.as_flattened().contains(&true)
     }
 }
 
@@ -180,6 +192,18 @@ mod tests {
     use super::{IsModified, OptionalTerrainMap, RelativeTerrainMap, recompute_vertex_normals};
     use crate::land::grid_access::{GridAccessor2D, Index2D};
     use crate::land::terrain_map::{TerrainMap, Vec3};
+
+    #[test]
+    fn absent_terrain_maps_do_not_reserve_inline_grids() {
+        use std::mem::size_of;
+
+        assert_eq!(size_of::<OptionalTerrainMap<i32, 65>>(), size_of::<usize>());
+        assert_eq!(
+            size_of::<OptionalTerrainMap<crate::land::terrain_map::Vec3<i8>, 65>>(),
+            size_of::<usize>()
+        );
+        assert!(size_of::<crate::land::landscape_diff::LandscapeDiff>() < 256);
+    }
 
     #[test]
     fn set_value_marks_and_gets_difference() {

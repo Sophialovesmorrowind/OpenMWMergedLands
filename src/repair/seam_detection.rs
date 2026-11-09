@@ -243,9 +243,8 @@ pub fn repair_landmass_seams(merged: &mut LandmassDiff) -> usize {
     while !possible_seams.is_empty() {
         let next = possible_seams.pop_front().expect("safe");
 
-        // LAND maps are stored inline, so removing and reinserting a cell copies all
-        // of its terrain data. Adjacent coordinates are distinct and can be borrowed
-        // together without moving either cell out of the map.
+        // Adjacent coordinates are distinct and can be borrowed together without
+        // removing and reinserting either cell.
         let [Some(lhs), Some(rhs)] = merged.land.get_disjoint_mut([&next.0, &next.1]) else {
             continue;
         };
