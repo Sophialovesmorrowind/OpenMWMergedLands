@@ -204,7 +204,10 @@ impl KnownTextures {
 
     /// Update the [`KnownTexture`] matching `texture` with changes from [`ParsedPlugin`] `plugin`.
     pub fn update_texture(&mut self, plugin: &Arc<ParsedPlugin>, texture: &LandscapeTexture) {
-        let known_texture = self.inner.get_mut(&texture.id).expect("unknown texture ID");
+        let known_texture = self
+            .inner
+            .get_mut(&texture.id.to_ascii_lowercase())
+            .expect("unknown texture ID");
         if let Some(file_name) = &texture.file_name
             && known_texture.inner.file_name.as_ref() != Some(file_name)
         {
@@ -222,8 +225,9 @@ impl KnownTextures {
     ) -> (IndexLTEX, IndexLTEX) {
         let old_index = texture_index(texture);
 
-        let new_index = if self.inner.contains_key(&texture.id) {
-            self.inner.get(&texture.id).expect("safe").index()
+        let key = texture.id.to_ascii_lowercase();
+        let new_index = if let Some(known) = self.inner.get(&key) {
+            known.index()
         } else {
             self.add_next_texture(plugin, texture)
         };
@@ -323,7 +327,8 @@ impl KnownTextures {
             plugin: plugin.clone(),
         };
 
-        self.inner.insert(texture.id.clone(), known_texture);
+        self.inner
+            .insert(texture.id.to_ascii_lowercase(), known_texture);
         next_index
     }
 }
