@@ -2,6 +2,7 @@ use crate::land::conversions::landscape_flags;
 use crate::land::grid_access::{GridAccessor2D, Index2D, SquareGridIterator};
 use crate::land::terrain_map::{TerrainMap, Vec3};
 use crate::term_style::yellow;
+use anyhow::{Context, Result, ensure};
 use log::warn;
 use num_traits::ToPrimitive;
 use tes3::esp::{Landscape, LandscapeFlags, VertexHeights};
@@ -9,25 +10,6 @@ use tes3::esp::{Landscape, LandscapeFlags, VertexHeights};
 const CELL_SIZE: usize = 65;
 const HEIGHT_MAP_SCALE_FACTOR: i32 = 8;
 const HEIGHT_MAP_SCALE_FACTOR_F32: f32 = 8.0;
-
-/// Limits `gradient` to the range of a [i8].
-fn truncate_gradient(gradient: &mut i32) {
-    if *gradient > i32::from(i8::MAX) {
-        *gradient = i32::from(i8::MAX);
-    } else if *gradient < i32::from(i8::MIN) {
-        *gradient = i32::from(i8::MIN);
-    }
-}
-
-fn i32_to_i8_saturating(value: i32) -> i8 {
-    i8::try_from(value).unwrap_or_else(|_| {
-        if value < i32::from(i8::MIN) {
-            i8::MIN
-        } else {
-            i8::MAX
-        }
-    })
-}
 
 fn f32_to_i8_saturating(value: f32) -> i8 {
     if value.is_finite() {
@@ -45,46 +27,44 @@ fn f32_to_i8_saturating(value: f32) -> i8 {
 /// the [`VertexHeights`] for any array size `T`.
 fn calculate_vertex_heights<const T: usize>(
     height_map: &TerrainMap<i32, T>,
-) -> (f32, TerrainMap<i8, T>) {
-    let mut terrain32 = [[0i32; T]; T];
-    let mut terrain = [[i8::default(); T]; T];
-
+) -> Result<(f32, TerrainMap<i8, T>)> {
+    let mut terrain = [[0; T]; T];
     let get_pixel = |y: usize, x: usize| height_map[y][x] / HEIGHT_MAP_SCALE_FACTOR;
-    let offset_i32 = get_pixel(0, 0);
-    let offset = offset_i32
-        .to_f32()
-        .expect("height offset should convert to f32");
+    let offset = get_pixel(0, 0).to_f32().expect("i32 fits in f32");
+    ensure!(
+        offset.to_i32() == Some(get_pixel(0, 0)),
+        "VHGT offset loses height precision"
+    );
 
-    let get_pixel_with_offset = |y, x| get_pixel(y, x) - offset_i32;
-
-    // Compute the first column.
-    for (y, row) in terrain32.iter_mut().enumerate().skip(1) {
-        row[0] = get_pixel_with_offset(y, 0) - get_pixel_with_offset(y - 1, 0);
-        truncate_gradient(&mut row[0]);
-    }
-
-    // Compute each row.
-    for (y, row) in terrain32.iter_mut().enumerate() {
-        for (x, cell) in row.iter_mut().enumerate().skip(1) {
-            *cell = get_pixel_with_offset(y, x) - get_pixel_with_offset(y, x - 1);
-            truncate_gradient(cell);
+    for (y, row) in terrain.iter_mut().enumerate() {
+        for (x, delta) in row.iter_mut().enumerate() {
+            let previous = if x > 0 {
+                get_pixel(y, x - 1)
+            } else if y > 0 {
+                get_pixel(y - 1, 0)
+            } else {
+                get_pixel(0, 0)
+            };
+            let difference = i64::from(get_pixel(y, x)) - i64::from(previous);
+            *delta = i8::try_from(difference).with_context(|| {
+                format!("VHGT delta {difference} at vertex ({x}, {y}) exceeds -128..=127")
+            })?;
         }
     }
 
-    for coords in terrain32.iter_grid() {
-        *terrain.get_mut(coords) = i32_to_i8_saturating(terrain32.get(coords));
-    }
-
-    (offset, terrain)
+    Ok((offset, terrain))
 }
 
 /// Creates [`VertexHeights`] from the `height_map` [`TerrainMap`].
-pub fn calculate_vertex_heights_tes3(height_map: &TerrainMap<i32, CELL_SIZE>) -> VertexHeights {
-    let (offset, terrain) = calculate_vertex_heights(height_map);
-    VertexHeights {
+/// Returns an error when a stored delta cannot represent the terrain.
+pub fn calculate_vertex_heights_tes3(
+    height_map: &TerrainMap<i32, CELL_SIZE>,
+) -> Result<VertexHeights> {
+    let (offset, terrain) = calculate_vertex_heights(height_map)?;
+    Ok(VertexHeights {
         offset,
         data: Box::new(terrain),
-    }
+    })
 }
 
 /// Creates [`TerrainMap`] from the `vertex_heights` [`VertexHeights`].
@@ -217,7 +197,8 @@ pub fn try_calculate_height_map(land: &Landscape) -> Option<TerrainMap<i32, 65>>
     };
 
     // IMPORTANT(dvd): Sanity check that this conversion works.
-    let vertex_heights_into = calculate_vertex_heights_tes3(&grid_height);
+    let vertex_heights_into =
+        calculate_vertex_heights_tes3(&grid_height).expect("decoded VHGT has representable deltas");
     let grid_heights_return = calculate_height_map::<65>(&vertex_heights_into);
     for coords in grid_height.iter_grid() {
         let lhs = grid_height.get(coords);
@@ -239,19 +220,30 @@ pub fn try_calculate_height_map(land: &Landscape) -> Option<TerrainMap<i32, 65>>
 mod tests {
     use super::{
         calculate_height_map, calculate_vertex_heights, calculate_vertex_heights_tes3,
-        truncate_gradient, try_calculate_height_map,
+        try_calculate_height_map,
     };
     use tes3::esp::{Landscape, LandscapeFlags};
 
     #[test]
-    fn truncate_gradient_clamps_to_i8_bounds() {
-        let mut too_large = i32::MAX;
-        truncate_gradient(&mut too_large);
-        assert_eq!(too_large, i32::from(i8::MAX));
+    fn vertex_heights_reject_unrepresentable_deltas_instead_of_clamping() {
+        let mut map = [[0; 4]; 4];
+        map[1][0] = -2600;
+        let error = calculate_vertex_heights(&map).unwrap_err();
+        assert!(error.to_string().contains("delta -325 at vertex (0, 1)"));
 
-        let mut too_small = i32::MIN;
-        truncate_gradient(&mut too_small);
-        assert_eq!(too_small, i32::from(i8::MIN));
+        map = [[0; 4]; 4];
+        map[2][3] = 1024;
+        assert!(calculate_vertex_heights(&map).is_err());
+    }
+
+    #[test]
+    fn vertex_heights_accept_asymmetric_bounds_and_unstored_vertical_steps() {
+        let map = [[0, 1016], [-1024, -8]];
+        let (_, deltas) = calculate_vertex_heights(&map).expect("valid deltas");
+        assert_eq!(deltas, [[0, 127], [-128, 127]]);
+
+        let map = [[0, 1016], [1016, 2032]];
+        assert!(calculate_vertex_heights(&map).is_ok());
     }
 
     #[test]
@@ -266,7 +258,7 @@ mod tests {
             }
         }
 
-        let vertex_heights = calculate_vertex_heights_tes3(&map);
+        let vertex_heights = calculate_vertex_heights_tes3(&map).expect("valid heights");
         let restored = calculate_height_map::<65>(&vertex_heights);
         assert_eq!(restored, *map);
     }
@@ -274,7 +266,7 @@ mod tests {
     #[test]
     fn calculate_vertex_heights_returns_expected_offset_for_uniform_map() {
         let map = [[80i32; 4]; 4];
-        let (offset, terrain) = calculate_vertex_heights(&map);
+        let (offset, terrain) = calculate_vertex_heights(&map).expect("valid heights");
         assert!((offset - 10.0).abs() < f32::EPSILON);
         assert!(terrain.into_iter().flatten().all(|value| value == 0));
     }
@@ -296,7 +288,7 @@ mod tests {
             .expect("valid 65x65 map");
         let land = Landscape {
             landscape_flags: LandscapeFlags::USES_VERTEX_HEIGHTS_AND_NORMALS,
-            vertex_heights: Some(calculate_vertex_heights_tes3(&map)),
+            vertex_heights: Some(calculate_vertex_heights_tes3(&map).expect("valid heights")),
             ..Landscape::default()
         };
 

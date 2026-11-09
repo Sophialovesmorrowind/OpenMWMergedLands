@@ -15,7 +15,7 @@ use crate::merge::merge_strategy::apply_merge_strategy;
 use crate::merge::relative_terrain_map::{IsModified, RelativeTerrainMap};
 use crate::repair::cleaning::{clean_known_textures, clean_landmass_diff};
 use crate::repair::debugging::add_debug_vertex_colors_to_landmass;
-use crate::repair::seam_detection::repair_landmass_seams;
+use crate::repair::height_encoding::repair_height_encoding;
 use crate::term_style::{bold, bold_red};
 use anyhow::{Context, Result, anyhow};
 use log::{debug, error, info, trace, warn};
@@ -743,7 +743,7 @@ fn merge_all(cli: &Cli) -> Result<()> {
     // We fix seams as a post-processing step because individual mods can introduce
     // tears into the landscape that would be fixed by subsequent mods. (e.g. patches)
     // If we try to fix the seams early, sadness results.
-    repair_landmass_seams(&mut merged_lands);
+    repair_height_encoding(&mut merged_lands);
     debug!(
         "Merged land diffs and repaired seams in {:?}",
         phase_start.elapsed()
@@ -801,7 +801,7 @@ fn merge_all(cli: &Cli) -> Result<()> {
     // Remap texture indices.
     info!(":: Converting to LAND Records ::");
 
-    let landmass = convert_landmass_diff_to_landmass(&merged_lands, &remapped_textures);
+    let landmass = convert_landmass_diff_to_landmass(&merged_lands, &remapped_textures)?;
     debug!(
         "Converted merged diff to LAND records in {:?}",
         phase_start.elapsed()
@@ -1406,7 +1406,6 @@ fn merge_landmass_into(merged: &mut LandmassDiff, plugin: &LandmassDiff) {
 }
 
 /// Creates a [`LandmassDiff`] representing a set of empty [`LandscapeDiff`] for the `reference` [Landmass].
-/// Prior to returning, the [`LandmassDiff`] will be updated by [`repair_landmass_seams`].
 fn create_merged_lands_from_reference(reference: &Landmass) -> LandmassDiff {
     let mut landmass_diff = LandmassDiff::new(reference.plugin.clone());
 
@@ -1514,7 +1513,9 @@ mod tests {
             grid: coords,
             landscape_flags: LandscapeFlags::USES_VERTEX_HEIGHTS_AND_NORMALS
                 | LandscapeFlags::UNKNOWN,
-            vertex_heights: Some(calculate_vertex_heights_tes3(&height_map)),
+            vertex_heights: Some(
+                calculate_vertex_heights_tes3(&height_map).expect("valid heights"),
+            ),
             vertex_normals: Some(VertexNormals::default()),
             ..Landscape::default()
         };
