@@ -89,7 +89,7 @@ impl<U, const T: usize> SquareGridIterator<T> for TerrainMap<U, T> {
 }
 
 bitflags! {
-    #[derive(Default)]
+    #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
     /// The data included with some [Landscape] or [LandscapeDiff].
     pub struct LandData: u32 {
         const VERTEX_COLORS = 0b10;
