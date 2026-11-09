@@ -2,7 +2,6 @@ use crate::ParsedPlugin;
 use crate::land::conversions::{
     coordinates, landscape_flags, texture_indices, vertex_colors, vertex_normals, world_map_data,
 };
-use crate::land::grid_access::{GridAccessor2D, SquareGridIterator};
 use crate::land::height_map::try_calculate_height_map;
 use crate::land::terrain_map::{LandData, TerrainMap, Vec2, Vec3};
 use crate::land::textures::IndexVTEX;
@@ -128,15 +127,20 @@ impl LandscapeDiff {
             try_calculate_height_map(land).as_ref(),
         );
 
-        let vertex_normals = Self::calculate_differences_with_mask(
-            "vertex_normals",
-            included_data.contains(LandscapeFlags::USES_VERTEX_HEIGHTS_AND_NORMALS)
-                && allowed_data.contains(LandData::VERTEX_NORMALS),
-            reference.and_then(vertex_normals).as_ref(),
-            vertex_normals(land).as_ref(),
-            true,
-            height_map.as_ref().map(RelativeTerrainMap::differences),
-        );
+        // Normal edits are independent authored data. Keep even an unchanged payload
+        // available so a later whole-record override can carry it with the heights.
+        let include_normals = included_data
+            .contains(LandscapeFlags::USES_VERTEX_HEIGHTS_AND_NORMALS)
+            && allowed_data.contains(LandData::VERTEX_NORMALS);
+        let vertex_normals = if include_normals {
+            let reference = reference.and_then(vertex_normals);
+            vertex_normals(land).map(|normals| {
+                let reference = reference.unwrap_or([[Vec3::default(); 65]; 65]);
+                RelativeTerrainMap::from_difference(&reference, &normals)
+            })
+        } else {
+            None
+        };
 
         let world_map_data = Self::calculate_differences(
             "world_map_data",
@@ -173,39 +177,18 @@ impl LandscapeDiff {
         }
     }
 
-    /// Create a new [`RelativeTerrainMap`] by applying the `allow` [`TerrainMap`]
-    /// mask to the `old` [`RelativeTerrainMap`].
-    pub fn apply_mask<U: RelativeTo, const T: usize>(
-        old: &RelativeTerrainMap<U, T>,
-        allow: Option<&TerrainMap<bool, T>>,
-    ) -> RelativeTerrainMap<U, T> {
-        let mut new = old.clone();
-
-        if let Some(allowed) = allow {
-            new.clean_some(old.iter_grid().filter(|coords| !allowed.get(*coords)));
-        } else {
-            new.clean_all();
-        }
-
-        new
-    }
-
-    /// Returns an [`OptionalTerrainMap`] of the differences between `reference` and `plugin`, after
-    /// applying any provided `allow` [`TerrainMap`] mask with [`Self::apply_mask`].
-    fn calculate_differences_with_mask<U: RelativeTo, const T: usize>(
+    /// Returns the modified terrain, keeping absent or unchanged layers optional.
+    fn calculate_differences<U: RelativeTo, const T: usize>(
         _value: &str,
         should_include: bool,
         reference: Option<&TerrainMap<U, T>>,
         plugin: Option<&TerrainMap<U, T>>,
-        use_mask: bool,
-        allow: Option<&TerrainMap<bool, T>>,
     ) -> OptionalTerrainMap<U, T> {
         if !should_include {
             return None;
         }
 
         let plugin = plugin?;
-
         let relative = if let Some(reference) = reference {
             RelativeTerrainMap::from_difference(reference, plugin)
         } else {
@@ -213,26 +196,7 @@ impl LandscapeDiff {
             RelativeTerrainMap::from_difference(&default, plugin)
         };
 
-        if !relative.is_modified() {
-            return None;
-        }
-
-        if use_mask {
-            let masked = Self::apply_mask(&relative, allow);
-            masked.is_modified().then_some(masked)
-        } else {
-            Some(relative)
-        }
-    }
-
-    /// Returns an [`OptionalTerrainMap`] of the differences between `reference` and `plugin`.
-    fn calculate_differences<U: RelativeTo, const T: usize>(
-        value: &str,
-        should_include: bool,
-        reference: Option<&TerrainMap<U, T>>,
-        plugin: Option<&TerrainMap<U, T>>,
-    ) -> OptionalTerrainMap<U, T> {
-        Self::calculate_differences_with_mask(value, should_include, reference, plugin, false, None)
+        relative.is_modified().then_some(relative)
     }
 
     /// Returns [`RelativeTerrainMap::empty`] if `plugin` is [Some] and `should_include`.
