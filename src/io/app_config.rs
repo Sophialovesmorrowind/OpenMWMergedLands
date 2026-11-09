@@ -1,6 +1,6 @@
 use crate::land::terrain_map::Vec2;
 use anyhow::{Context, Result, anyhow};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de};
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::io::ErrorKind;
@@ -63,7 +63,7 @@ pub struct MergedLandsConfig {
     ignore_plugins: Vec<String>,
     #[serde(default, alias = "ignore_plugins_from_paths", alias = "ignore_paths")]
     ignore_plugins_from_path: Vec<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_cell_ignore")]
     cell_ignore: Vec<[i32; 2]>,
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -71,8 +71,44 @@ pub struct MergedLandsConfig {
     #[serde(default)]
     #[serde(skip_serializing_if = "Vec::is_empty")]
     generated_output_files: Vec<String>,
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[serde(
+        default,
+        skip_serializing_if = "BTreeMap::is_empty",
+        deserialize_with = "deserialize_cell_ignore_by_plugin"
+    )]
     cell_ignore_by_plugin: BTreeMap<String, Vec<[i32; 2]>>,
+}
+
+fn validate_cell_coordinates<E: de::Error>(cells: Vec<Vec<i32>>) -> Result<Vec<[i32; 2]>, E> {
+    cells
+        .into_iter()
+        .map(|coords| {
+            coords.try_into().map_err(|coords: Vec<i32>| {
+                E::invalid_length(coords.len(), &"exactly two cell coordinates")
+            })
+        })
+        .collect()
+}
+
+fn deserialize_cell_ignore<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<[i32; 2]>, D::Error> {
+    // Some TOML versions ignore excess values when decoding fixed-size arrays.
+    // Read the full sequence before validating each coordinate pair.
+    let cells = Vec::<Vec<i32>>::deserialize(deserializer)?;
+
+    validate_cell_coordinates(cells)
+}
+
+fn deserialize_cell_ignore_by_plugin<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<BTreeMap<String, Vec<[i32; 2]>>, D::Error> {
+    let plugins = BTreeMap::<String, Vec<Vec<i32>>>::deserialize(deserializer)?;
+
+    plugins
+        .into_iter()
+        .map(|(plugin, cells)| validate_cell_coordinates(cells).map(|cells| (plugin, cells)))
+        .collect()
 }
 
 impl MergedLandsConfig {
