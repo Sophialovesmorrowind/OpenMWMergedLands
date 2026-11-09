@@ -78,17 +78,20 @@ pub fn calculate_vertex_heights_tes3(
 /// Creates [`TerrainMap`] from the `vertex_heights` [`VertexHeights`].
 fn calculate_height_map<const T: usize>(vertex_heights: &VertexHeights) -> TerrainMap<i32, T> {
     let mut grid_height = [[0; T]; T];
-    let mut row_height = vertex_heights.offset;
+    // Quantize the offset once in world units. Per-vertex truncation would split
+    // a legal VHGT phase when a sub-world-unit height crosses zero.
+    let mut row_height = (vertex_heights.offset * HEIGHT_MAP_SCALE_FACTOR_F32)
+        .to_i64()
+        .expect("VHGT offset should fit in integer world units");
     for (y, row) in grid_height.iter_mut().enumerate() {
-        row_height += f32::from(vertex_heights.data[y][0]);
+        row_height += i64::from(vertex_heights.data[y][0]) * i64::from(HEIGHT_MAP_SCALE_FACTOR);
         let mut height = row_height;
         for (x, value) in row.iter_mut().enumerate() {
             if x > 0 {
-                height += f32::from(vertex_heights.data[y][x]);
+                height += i64::from(vertex_heights.data[y][x]) * i64::from(HEIGHT_MAP_SCALE_FACTOR);
             }
-            *value = (height * HEIGHT_MAP_SCALE_FACTOR_F32)
-                .to_i32()
-                .expect("vertex height should fit in integer world units");
+            *value =
+                i32::try_from(height).expect("vertex height should fit in integer world units");
         }
     }
 
@@ -380,6 +383,27 @@ mod tests {
             }
             let encoded = calculate_vertex_heights_tes3(&heights).expect("fractional offset");
             assert_eq!(calculate_height_map::<65>(&encoded), *heights);
+        }
+    }
+
+    #[test]
+    fn sub_world_offsets_keep_one_phase_when_heights_cross_zero() {
+        for (offset, first) in [(0.1, 0), (-0.1, 0), (0.2, 1), (-0.2, -1)] {
+            let mut data = Box::new([[0; 65]; 65]);
+            data[0][1] = -1;
+            data[1][0] = 1;
+            let land = Landscape {
+                landscape_flags: LandscapeFlags::USES_VERTEX_HEIGHTS_AND_NORMALS,
+                vertex_heights: Some(tes3::esp::VertexHeights { offset, data }),
+                ..Landscape::default()
+            };
+
+            let heights = try_calculate_height_map(&land).expect("legal source heights");
+            assert_eq!(heights[0][0], first);
+            assert_eq!(heights[0][1], first - 8);
+            assert_eq!(heights[1][0], first + 8);
+            let encoded = calculate_vertex_heights_tes3(&heights).expect("one VHGT phase");
+            assert_eq!(calculate_height_map::<65>(&encoded), heights);
         }
     }
 
