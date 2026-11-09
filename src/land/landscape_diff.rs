@@ -25,6 +25,15 @@ pub struct LandscapeDiff {
 }
 
 impl LandscapeDiff {
+    /// An available zero-valued layer still supplies data for later partial records.
+    pub fn has_terrain_data(&self) -> bool {
+        self.height_map.is_some()
+            || self.vertex_normals.is_some()
+            || self.world_map_data.is_some()
+            || self.vertex_colors.is_some()
+            || self.texture_indices.is_some()
+    }
+
     /// Returns `true` if the [Landscape] is modified.
     pub fn is_modified(&self) -> bool {
         self.height_map.is_modified()
@@ -196,7 +205,7 @@ impl LandscapeDiff {
             RelativeTerrainMap::from_difference(&default, plugin)
         };
 
-        relative.is_modified().then_some(relative)
+        Some(relative)
     }
 
     /// Returns [`RelativeTerrainMap::empty`] if `plugin` is [Some] and `should_include`.

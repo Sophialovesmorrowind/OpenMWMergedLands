@@ -1350,7 +1350,7 @@ fn merge_landmass_into(merged: &mut LandmassDiff, plugin: &LandmassDiff) {
         if let Some(existing) = merged.land.get_mut(coords) {
             let updated = merge_landscape_diff(&plugin.plugin, existing, land);
             *existing = updated;
-        } else if land.is_modified() {
+        } else if land.has_terrain_data() {
             let mut merged_land = land.clone();
             merged_land
                 .plugins
@@ -1752,6 +1752,68 @@ mod tests {
 
     fn idx(v: u16) -> IndexVTEX {
         IndexVTEX::new(v)
+    }
+
+    #[test]
+    fn default_predecessor_layers_survive_a_partial_land_winner() {
+        for height in [0, 80] {
+            let heights: Box<[[i32; 65]; 65]> = vec![[height; 65]; 65]
+                .into_boxed_slice()
+                .try_into()
+                .expect("65 rows");
+            let mut base = fixture_land_with_vertex_color((0, 0), height, Vec3::default());
+            base.vertex_heights =
+                Some(calculate_vertex_heights_tes3(&heights).expect("flat heights"));
+            base.landscape_flags |= LandscapeFlags::USES_TEXTURES;
+            base.texture_indices = Some(TextureIndices {
+                data: Box::new([[0; 16]; 16]),
+            });
+            base.world_map_data = Some(tes3::esp::WorldMapData {
+                data: Box::new([[0; 9]; 9]),
+            });
+            let partial = Landscape {
+                grid: (0, 0),
+                landscape_flags: LandscapeFlags::USES_VERTEX_HEIGHTS_AND_NORMALS,
+                vertex_normals: Some(VertexNormals {
+                    data: Box::new([[[64, 0, 110]; 65]; 65]),
+                }),
+                ..Landscape::default()
+            };
+            let (mut merged, loaded) = merge_test_plugins(vec![
+                parsed_plugin_with_land("Base.esm", base, PluginMeta::default()),
+                parsed_plugin_with_land("Partial.esp", partial, PluginMeta::default()),
+            ]);
+            crate::repair::cleaning::complete_landmass_layers(&mut merged, &loaded);
+            crate::repair::height_encoding::repair_height_encoding(&mut merged);
+            clean_landmass_diff(&mut merged, &loaded);
+            let output = crate::io::save_to_plugin::convert_landmass_diff_to_landmass(
+                &merged,
+                &crate::land::textures::RemappedTextures::from(&[true]),
+            )
+            .expect("valid LAND");
+            let land = output
+                .land
+                .get(&crate::Vec2::new(0, 0))
+                .expect("prior layers require output even when zero");
+            assert!(
+                crate::land::height_map::try_calculate_height_map(land)
+                    .expect("heights")
+                    .iter()
+                    .flatten()
+                    .all(|value| *value == height)
+            );
+            assert!(
+                land.vertex_colors
+                    .as_ref()
+                    .expect("black colors")
+                    .data
+                    .iter()
+                    .flatten()
+                    .all(|value| *value == [0, 0, 0])
+            );
+            assert!(land.texture_indices.is_some());
+            assert!(land.world_map_data.is_some());
+        }
     }
 
     #[test]
