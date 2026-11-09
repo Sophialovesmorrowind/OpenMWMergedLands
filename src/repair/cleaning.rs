@@ -1,7 +1,7 @@
 use crate::io::parsed_plugins::{ParsedPlugin, ParsedPlugins};
 use crate::land::conversions::{texture_indices, vertex_colors, vertex_normals, world_map_data};
 use crate::land::grid_access::{GridAccessor2D, SquareGridIterator};
-use crate::land::height_map::{recompute_vertex_normals, try_calculate_height_map};
+use crate::land::height_map::{NormalSource, recompute_vertex_normals, try_calculate_height_map};
 use crate::land::landscape_diff::LandscapeDiff;
 use crate::land::terrain_map::TerrainMap;
 use crate::land::textures::{KnownTextures, RemappedTextures};
@@ -115,9 +115,18 @@ fn finalize_vertex_normals(landmass: &mut LandmassDiff, loaded_landmass: &Landma
                 .objects_of_type::<Landscape>()
                 .find(|source| source.grid == (coords.x, coords.y))
         });
-        let sources = loaded.into_iter().chain(predecessors).filter_map(|source| {
-            Some((try_calculate_height_map(source)?, vertex_normals(source)?))
-        });
+        let decode_source = |source: &Landscape| {
+            Some(Arc::new(NormalSource {
+                heights: try_calculate_height_map(source)?,
+                normals: vertex_normals(source)?,
+                selected: None,
+            }))
+        };
+        let sources = loaded
+            .into_iter()
+            .filter_map(decode_source)
+            .chain(land.normal_sources.iter().cloned())
+            .chain(predecessors.filter_map(decode_source));
         let normals = recompute_vertex_normals(&heights.to_terrain(), authored.as_ref(), sources);
         land.vertex_normals = Some(RelativeTerrainMap::empty(normals));
     }

@@ -472,6 +472,7 @@ mod tests {
                 world_map_data: None,
                 vertex_colors: None,
                 texture_indices: None,
+                normal_sources: Vec::new(),
                 plugins: Vec::new(),
             },
         );

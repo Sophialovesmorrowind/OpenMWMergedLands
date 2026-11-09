@@ -2,7 +2,8 @@ use crate::ParsedPlugin;
 use crate::land::conversions::{
     coordinates, landscape_flags, texture_indices, vertex_colors, vertex_normals, world_map_data,
 };
-use crate::land::height_map::try_calculate_height_map;
+use crate::land::grid_access::{GridAccessor2D, SquareGridIterator};
+use crate::land::height_map::{NormalSource, try_calculate_height_map};
 use crate::land::terrain_map::{LandData, TerrainMap, Vec2, Vec3};
 use crate::land::textures::IndexVTEX;
 use crate::merge::relative_terrain_map::{IsModified, OptionalTerrainMap, RelativeTerrainMap};
@@ -21,10 +22,47 @@ pub struct LandscapeDiff {
     pub world_map_data: OptionalTerrainMap<u8, 9>,
     pub vertex_colors: OptionalTerrainMap<Vec3<u8>, 65>,
     pub texture_indices: OptionalTerrainMap<IndexVTEX, 16>,
+    pub normal_sources: Vec<Arc<NormalSource>>,
     pub plugins: Vec<(Arc<ParsedPlugin>, LandData)>,
 }
 
 impl LandscapeDiff {
+    /// Pair newly synthesized Resolve vectors with the geometry chosen at that stage.
+    pub fn retain_resolved_normal_source(&mut self, old: &Self, new: &Self) {
+        let (Some(heights), Some(normals), Some(old_normals), Some(new_normals)) = (
+            self.height_map.as_ref(),
+            self.vertex_normals.as_ref(),
+            old.vertex_normals.as_ref(),
+            new.vertex_normals.as_ref(),
+        ) else {
+            return;
+        };
+
+        let mut selected = Box::new([[false; 65]; 65]);
+        let mut synthesized = false;
+        for coords in normals.iter_grid() {
+            let chosen = normals.get_value(coords);
+            if old_normals.has_difference(coords)
+                && new_normals.has_difference(coords)
+                && chosen != old_normals.get_value(coords)
+                && chosen != new_normals.get_value(coords)
+            {
+                *selected.get_mut(coords) = true;
+                synthesized = true;
+            }
+        }
+        if !synthesized {
+            return;
+        }
+
+        // Other vertices in this cell must still validate against their original source.
+        self.normal_sources.push(Arc::new(NormalSource {
+            heights: heights.to_terrain(),
+            normals: normals.to_terrain(),
+            selected: Some(selected),
+        }));
+    }
+
     /// An available zero-valued layer still supplies data for later partial records.
     pub fn has_terrain_data(&self) -> bool {
         self.height_map.is_some()
@@ -115,6 +153,7 @@ impl LandscapeDiff {
             world_map_data,
             vertex_colors,
             texture_indices,
+            normal_sources: Vec::new(),
             plugins: vec![(plugin, LandData::default())],
         }
     }
@@ -182,6 +221,7 @@ impl LandscapeDiff {
             world_map_data,
             vertex_colors,
             texture_indices,
+            normal_sources: Vec::new(),
             plugins: Vec::new(),
         }
     }
