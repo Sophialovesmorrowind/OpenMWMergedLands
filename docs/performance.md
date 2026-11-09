@@ -1,5 +1,9 @@
 # Performance sweep
 
+The later [terrain storage audit](terrain-storage-audit.md) records the storage
+fixes, adversarial review, and a ten-run comparison against release 1.2. The
+measurements below describe the earlier sweep.
+
 The sweep compared release builds against commit `8f38ca8` on Linux x86_64 with
 Rust 1.94.0. Both generated fixtures and the active full modlist are measured;
 game files and saved configuration are not modified. The complete-pipeline benchmark measures parsing,

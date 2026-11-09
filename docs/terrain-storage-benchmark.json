@@ -1,0 +1,340 @@
+{
+  "method": "Two excluded warmups per tool, ten alternating measured pairs, per-child wait4 elapsed/RSS, copied normal audited config.",
+  "summary": {
+    "released": {
+      "runs": 10,
+      "mean_seconds": 4.518855993400211,
+      "median_seconds": 4.528054161499313,
+      "mean_peak_rss_mib": 7752.748046875,
+      "counts": {
+        "TES3": 1,
+        "LTEX": 289,
+        "LAND": 2437
+      },
+      "bytes": 73070204,
+      "terrain_sha256": "a3aeeb1ed09af00cfaebe2277ad8c1eff011e222b319df55a27b1939f9043bd4"
+    },
+    "fixed": {
+      "runs": 10,
+      "mean_seconds": 2.8895527066993965,
+      "median_seconds": 2.893159798501074,
+      "mean_peak_rss_mib": 1643.13828125,
+      "counts": {
+        "TES3": 1,
+        "LTEX": 202,
+        "LAND": 298
+      },
+      "bytes": 8827153,
+      "terrain_sha256": "a477f30f79864ce5e0da5a416f2f452e1bcc9f9a3f8ace5a87c1401b8c666df7"
+    }
+  },
+  "runs": {
+    "released": [
+      {
+        "seconds": 4.5732674860009865,
+        "peak_rss_mib": 7724.75390625,
+        "terrain_sha256": "a3aeeb1ed09af00cfaebe2277ad8c1eff011e222b319df55a27b1939f9043bd4",
+        "counts": {
+          "TES3": 1,
+          "LTEX": 289,
+          "LAND": 2437
+        },
+        "bytes": 73070204
+      },
+      {
+        "seconds": 4.539407716001733,
+        "peak_rss_mib": 7734.06640625,
+        "terrain_sha256": "a3aeeb1ed09af00cfaebe2277ad8c1eff011e222b319df55a27b1939f9043bd4",
+        "counts": {
+          "TES3": 1,
+          "LTEX": 289,
+          "LAND": 2437
+        },
+        "bytes": 73070204
+      },
+      {
+        "seconds": 4.535578379000071,
+        "peak_rss_mib": 7751.76171875,
+        "terrain_sha256": "a3aeeb1ed09af00cfaebe2277ad8c1eff011e222b319df55a27b1939f9043bd4",
+        "counts": {
+          "TES3": 1,
+          "LTEX": 289,
+          "LAND": 2437
+        },
+        "bytes": 73070204
+      },
+      {
+        "seconds": 4.520529943998554,
+        "peak_rss_mib": 7850.68359375,
+        "terrain_sha256": "a3aeeb1ed09af00cfaebe2277ad8c1eff011e222b319df55a27b1939f9043bd4",
+        "counts": {
+          "TES3": 1,
+          "LTEX": 289,
+          "LAND": 2437
+        },
+        "bytes": 73070204
+      },
+      {
+        "seconds": 4.323707507999643,
+        "peak_rss_mib": 7762.46484375,
+        "terrain_sha256": "a3aeeb1ed09af00cfaebe2277ad8c1eff011e222b319df55a27b1939f9043bd4",
+        "counts": {
+          "TES3": 1,
+          "LTEX": 289,
+          "LAND": 2437
+        },
+        "bytes": 73070204
+      },
+      {
+        "seconds": 4.506696213000396,
+        "peak_rss_mib": 7779.48046875,
+        "terrain_sha256": "a3aeeb1ed09af00cfaebe2277ad8c1eff011e222b319df55a27b1939f9043bd4",
+        "counts": {
+          "TES3": 1,
+          "LTEX": 289,
+          "LAND": 2437
+        },
+        "bytes": 73070204
+      },
+      {
+        "seconds": 4.481140589999995,
+        "peak_rss_mib": 7733.22265625,
+        "terrain_sha256": "a3aeeb1ed09af00cfaebe2277ad8c1eff011e222b319df55a27b1939f9043bd4",
+        "counts": {
+          "TES3": 1,
+          "LTEX": 289,
+          "LAND": 2437
+        },
+        "bytes": 73070204
+      },
+      {
+        "seconds": 4.629942087998643,
+        "peak_rss_mib": 7720.2265625,
+        "terrain_sha256": "a3aeeb1ed09af00cfaebe2277ad8c1eff011e222b319df55a27b1939f9043bd4",
+        "counts": {
+          "TES3": 1,
+          "LTEX": 289,
+          "LAND": 2437
+        },
+        "bytes": 73070204
+      },
+      {
+        "seconds": 4.4851429230002395,
+        "peak_rss_mib": 7741.04296875,
+        "terrain_sha256": "a3aeeb1ed09af00cfaebe2277ad8c1eff011e222b319df55a27b1939f9043bd4",
+        "counts": {
+          "TES3": 1,
+          "LTEX": 289,
+          "LAND": 2437
+        },
+        "bytes": 73070204
+      },
+      {
+        "seconds": 4.593147087001853,
+        "peak_rss_mib": 7729.77734375,
+        "terrain_sha256": "a3aeeb1ed09af00cfaebe2277ad8c1eff011e222b319df55a27b1939f9043bd4",
+        "counts": {
+          "TES3": 1,
+          "LTEX": 289,
+          "LAND": 2437
+        },
+        "bytes": 73070204
+      }
+    ],
+    "fixed": [
+      {
+        "seconds": 2.892833742000221,
+        "peak_rss_mib": 1644.51953125,
+        "terrain_sha256": "a477f30f79864ce5e0da5a416f2f452e1bcc9f9a3f8ace5a87c1401b8c666df7",
+        "counts": {
+          "TES3": 1,
+          "LTEX": 202,
+          "LAND": 298
+        },
+        "bytes": 8827153
+      },
+      {
+        "seconds": 2.8985776839981554,
+        "peak_rss_mib": 1640.703125,
+        "terrain_sha256": "a477f30f79864ce5e0da5a416f2f452e1bcc9f9a3f8ace5a87c1401b8c666df7",
+        "counts": {
+          "TES3": 1,
+          "LTEX": 202,
+          "LAND": 298
+        },
+        "bytes": 8827153
+      },
+      {
+        "seconds": 2.9024465949987643,
+        "peak_rss_mib": 1644.5859375,
+        "terrain_sha256": "a477f30f79864ce5e0da5a416f2f452e1bcc9f9a3f8ace5a87c1401b8c666df7",
+        "counts": {
+          "TES3": 1,
+          "LTEX": 202,
+          "LAND": 298
+        },
+        "bytes": 8827153
+      },
+      {
+        "seconds": 2.9277488910011016,
+        "peak_rss_mib": 1640.56640625,
+        "terrain_sha256": "a477f30f79864ce5e0da5a416f2f452e1bcc9f9a3f8ace5a87c1401b8c666df7",
+        "counts": {
+          "TES3": 1,
+          "LTEX": 202,
+          "LAND": 298
+        },
+        "bytes": 8827153
+      },
+      {
+        "seconds": 2.8875737999987905,
+        "peak_rss_mib": 1639.609375,
+        "terrain_sha256": "a477f30f79864ce5e0da5a416f2f452e1bcc9f9a3f8ace5a87c1401b8c666df7",
+        "counts": {
+          "TES3": 1,
+          "LTEX": 202,
+          "LAND": 298
+        },
+        "bytes": 8827153
+      },
+      {
+        "seconds": 2.865796516998671,
+        "peak_rss_mib": 1646.97265625,
+        "terrain_sha256": "a477f30f79864ce5e0da5a416f2f452e1bcc9f9a3f8ace5a87c1401b8c666df7",
+        "counts": {
+          "TES3": 1,
+          "LTEX": 202,
+          "LAND": 298
+        },
+        "bytes": 8827153
+      },
+      {
+        "seconds": 2.8945251579971227,
+        "peak_rss_mib": 1642.14453125,
+        "terrain_sha256": "a477f30f79864ce5e0da5a416f2f452e1bcc9f9a3f8ace5a87c1401b8c666df7",
+        "counts": {
+          "TES3": 1,
+          "LTEX": 202,
+          "LAND": 298
+        },
+        "bytes": 8827153
+      },
+      {
+        "seconds": 2.8516521009987628,
+        "peak_rss_mib": 1641.58203125,
+        "terrain_sha256": "a477f30f79864ce5e0da5a416f2f452e1bcc9f9a3f8ace5a87c1401b8c666df7",
+        "counts": {
+          "TES3": 1,
+          "LTEX": 202,
+          "LAND": 298
+        },
+        "bytes": 8827153
+      },
+      {
+        "seconds": 2.8808867240004474,
+        "peak_rss_mib": 1646.88671875,
+        "terrain_sha256": "a477f30f79864ce5e0da5a416f2f452e1bcc9f9a3f8ace5a87c1401b8c666df7",
+        "counts": {
+          "TES3": 1,
+          "LTEX": 202,
+          "LAND": 298
+        },
+        "bytes": 8827153
+      },
+      {
+        "seconds": 2.893485855001927,
+        "peak_rss_mib": 1643.8125,
+        "terrain_sha256": "a477f30f79864ce5e0da5a416f2f452e1bcc9f9a3f8ace5a87c1401b8c666df7",
+        "counts": {
+          "TES3": 1,
+          "LTEX": 202,
+          "LAND": 298
+        },
+        "bytes": 8827153
+      }
+    ]
+  },
+  "platform": "Linux x86_64",
+  "fixed_build_toolchain": "Rust 1.99.0 (repository pin), cargo build --release --locked",
+  "released_build": "Merged Lands 1.2, MOMW Tools Pack 1.58",
+  "workload": {
+    "content_entries": 681,
+    "input_plugins": 589,
+    "winning_land_cells": 12656,
+    "conflict_images": false,
+    "debug_vertex_colors": false,
+    "tr_cell_exceptions": "Normal saved settings preserved"
+  },
+  "source_commit": "d8e5d8738a55ddf651c3f9e02e5552be1dbe6a16",
+  "binary_sha256": {
+    "released": "f1286903043ed380d315a232ae94ab12ed8b5a6cb5ddb9d8653fcf5a4648d8cd",
+    "fixed": "b57704926ba7b0636437e70853296f380d5b671d77e0c154762c96cef8a7e283"
+  },
+  "fixed_record_validation": {
+    "header_count_matches": true,
+    "master_dependencies": 25,
+    "dependency_sizes_match": true,
+    "malformed_payloads": 0,
+    "invalid_texture_references": 0,
+    "redundant_land": 0,
+    "worsened_border_pairs": 0,
+    "unchanged_torn_borders": 0,
+    "change_patterns": {
+      "VHGT,VNML": 277,
+      "VHGT": 12,
+      "VCLR": 3,
+      "VTEX": 4,
+      "VHGT,VNML,VTEX": 2
+    }
+  },
+  "adversarial_review": {
+    "final_reviewed_source_commit": "d8e5d8738a55ddf651c3f9e02e5552be1dbe6a16",
+    "final_reviewed_binary_sha256": "b57704926ba7b0636437e70853296f380d5b671d77e0c154762c96cef8a7e283",
+    "remaining_confirmed_findings": 0,
+    "resolved_findings": [
+      {
+        "issue": "Explicit Resolve normals discarded",
+        "fix": "510702d"
+      },
+      {
+        "issue": "Present zero-valued predecessor layers discarded",
+        "fix": "4d95c52"
+      },
+      {
+        "issue": "Fractional VHGT offset lost before world-unit scaling",
+        "fix": "0c7e5b1"
+      },
+      {
+        "issue": "Cleared LTEX filename replaced by older filename",
+        "fix": "7f7a460"
+      },
+      {
+        "issue": "Five end-to-end helper calls read empty input directories",
+        "fix": "274209b"
+      },
+      {
+        "issue": "Sub-world offsets crossing zero panic after per-vertex truncation",
+        "fix": "2434e8d"
+      },
+      {
+        "issue": "VNML-only authored vectors lost with inherited heights",
+        "fix": "d8e5d87"
+      }
+    ],
+    "asserted_probes": [
+      "LTEX clearing, zero-valued layers, fractional integer phases, and Resolve output",
+      "Forced LAND emission for offsets +0.1, -0.1, +0.2, -0.2 crossing zero",
+      "Resolve vector retention and later geometry invalidation",
+      "Partial VNML vector retention and later geometry invalidation",
+      "Partial VNML after an ignored height edit",
+      "Four legacy end-to-end tests covering five corrected helper calls"
+    ],
+    "scope": "Terrain storage and merge paths plus listed reproductions; no in-game visual pass"
+  },
+  "source_checks": {
+    "rust_tests_passed": 155,
+    "format_check_passed": true,
+    "strict_pedantic_clippy_passed": true,
+    "cli_help_smoke_check_passed": true
+  }
+}
