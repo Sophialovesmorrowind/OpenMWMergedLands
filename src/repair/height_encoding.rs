@@ -3,7 +3,7 @@ use crate::land::grid_access::Index2D;
 use crate::land::terrain_map::Vec2;
 use crate::repair::seam_detection::repair_landmass_seams;
 use log::warn;
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 
 /// Global coordinates identify all copies of a shared border or corner vertex.
 #[derive(Clone, Copy)]
@@ -83,11 +83,89 @@ fn constrain_edge(
     pending.push_back(vertex);
 }
 
+/// Connected cells need one common VHGT phase so shared vertices encode identically.
+fn quantize_height_components(landmass: &mut LandmassDiff, cells: &[Vec2<i32>]) {
+    let mut visited = HashSet::new();
+    for start in cells {
+        if !visited.insert(*start) {
+            continue;
+        }
+
+        let mut component = Vec::new();
+        let mut pending = VecDeque::from([*start]);
+        let mut phases = [0usize; 8];
+        while let Some(cell) = pending.pop_front() {
+            let map = landmass.land[&cell]
+                .height_map
+                .as_ref()
+                .expect("height-bearing cell");
+            for y in 0..65 {
+                for x in 0..65 {
+                    let phase = usize::try_from(map.get_value(Index2D::new(x, y)).rem_euclid(8))
+                        .expect("nonnegative phase");
+                    phases[phase] += 1;
+                }
+            }
+            component.push(cell);
+
+            // Diagonal cells can share a corner even when the side neighbors are absent.
+            for dy in -1..=1 {
+                for dx in -1..=1 {
+                    let (Some(x), Some(y)) = (cell.x.checked_add(dx), cell.y.checked_add(dy))
+                    else {
+                        continue;
+                    };
+                    let neighbor = Vec2::new(x, y);
+                    if landmass
+                        .land
+                        .get(&neighbor)
+                        .is_some_and(|land| land.height_map.is_some())
+                        && visited.insert(neighbor)
+                    {
+                        pending.push_back(neighbor);
+                    }
+                }
+            }
+        }
+
+        let first = landmass.land[start]
+            .height_map
+            .as_ref()
+            .expect("height-bearing cell")
+            .get_value(Index2D::new(0, 0));
+        let mut phase = usize::try_from(first.rem_euclid(8)).expect("nonnegative phase");
+        for candidate in 0..8 {
+            if phases[candidate] > phases[phase] {
+                phase = candidate;
+            }
+        }
+        let phase = i64::try_from(phase).expect("eight-unit phase");
+        for cell in component {
+            let map = landmass
+                .land
+                .get_mut(&cell)
+                .and_then(|land| land.height_map.as_mut())
+                .expect("height-bearing cell");
+            for y in 0..65 {
+                for x in 0..65 {
+                    let coords = Index2D::new(x, y);
+                    let height = i64::from(map.get_value(coords));
+                    let quantized = (height - phase) / 8 * 8 + phase;
+                    map.set_value(
+                        coords,
+                        i32::try_from(quantized).expect("quantization fits i32"),
+                    );
+                }
+            }
+        }
+    }
+}
+
 /// Repair seams, quantize shared vertices together, and make stored VHGT steps representable.
 ///
 /// Only horizontal edges and first-column vertical edges are stored in VHGT. Lowering
 /// the high endpoint propagates through those edges until all constraints hold. Heights
-/// decrease monotonically and remain bounded by the initial minimum, so no iteration
+/// decrease monotonically and remain bounded by the quantized minimum, so no iteration
 /// limit or encoder clamp is needed. Every copy of a shared vertex changes together.
 pub fn repair_height_encoding(landmass: &mut LandmassDiff) {
     repair_landmass_seams(landmass);
@@ -99,20 +177,7 @@ pub fn repair_height_encoding(landmass: &mut LandmassDiff) {
         .map(|(cell, _)| *cell)
         .collect();
 
-    for cell in &cells {
-        let map = landmass
-            .land
-            .get_mut(cell)
-            .and_then(|land| land.height_map.as_mut())
-            .expect("height-bearing cell");
-        for y in 0..65 {
-            for x in 0..65 {
-                let coords = Index2D::new(x, y);
-                let height = map.get_value(coords);
-                map.set_value(coords, height / 8 * 8);
-            }
-        }
-    }
+    quantize_height_components(landmass, &cells);
 
     let mut pending = VecDeque::new();
     for cell in cells {
@@ -274,6 +339,46 @@ mod tests {
                         .to_terrain(),
                     once
                 );
+            })
+            .expect("spawn")
+            .join()
+            .expect("test");
+    }
+
+    #[test]
+    fn shared_vertices_preserve_a_common_fractional_offset() {
+        std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let mut merged = LandmassDiff::new(Arc::new(ParsedPlugin::empty("test.esp")));
+                for (cell, height) in [(Vec2::new(0, 0), 4), (Vec2::new(1, 0), 516)] {
+                    let heights: Box<[[i32; 65]; 65]> = vec![[height; 65]; 65]
+                        .into_boxed_slice()
+                        .try_into()
+                        .expect("65 rows");
+                    insert_cell(&mut merged, cell, &heights);
+                }
+
+                repair_height_encoding(&mut merged);
+
+                for (cell, interior) in [(Vec2::new(0, 0), 4), (Vec2::new(1, 0), 516)] {
+                    let heights = merged.land[&cell]
+                        .height_map
+                        .as_ref()
+                        .expect("heights")
+                        .to_terrain();
+                    assert_eq!(heights[32][32], interior);
+                    assert_eq!(heights[32][if cell.x == 0 { 64 } else { 0 }], 260);
+
+                    let encoded = Landscape {
+                        landscape_flags: LandscapeFlags::USES_VERTEX_HEIGHTS_AND_NORMALS,
+                        vertex_heights: Some(
+                            calculate_vertex_heights_tes3(&heights).expect("fractional offset"),
+                        ),
+                        ..Landscape::default()
+                    };
+                    assert_eq!(try_calculate_height_map(&encoded), Some(heights));
+                }
             })
             .expect("spawn")
             .join()
