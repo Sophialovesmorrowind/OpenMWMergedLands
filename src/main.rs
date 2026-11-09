@@ -1555,25 +1555,31 @@ mod tests {
 
     fn run_vanilla_merge(
         test_name: &str,
+        data_files: &Path,
         plugin_names: &[&str],
         output_file_name: &str,
     ) -> (PathBuf, PathBuf) {
-        run_vanilla_merge_with_config(test_name, plugin_names, output_file_name, None)
+        run_vanilla_merge_with_config(test_name, data_files, plugin_names, output_file_name, None)
     }
 
     fn run_vanilla_merge_with_config(
         test_name: &str,
+        data_files: &Path,
         plugin_names: &[&str],
         output_file_name: &str,
         app_config: Option<&str>,
     ) -> (PathBuf, PathBuf) {
         let root = unique_temp_dir(test_name);
-        let data_files = root.join("Data Files");
         let output_dir = root.join("Output");
         let merged_lands_dir = root.join("MergedLands");
         let config_dir = root.join("Config");
 
-        fs::create_dir_all(&data_files).expect("create Data Files dir");
+        for plugin in plugin_names {
+            assert!(
+                data_files.join(plugin).is_file(),
+                "missing fixture input {plugin}"
+            );
+        }
         fs::create_dir_all(&output_dir).expect("create output dir");
         fs::create_dir_all(merged_lands_dir.join("Conflicts")).expect("create conflicts dir");
         fs::create_dir_all(&config_dir).expect("create config dir");
@@ -1610,18 +1616,23 @@ mod tests {
 
     fn run_openmw_merge(
         test_name: &str,
+        data_files: &Path,
         plugin_names: &[&str],
         output_file_name: &str,
     ) -> (PathBuf, PathBuf) {
         let root = unique_temp_dir(test_name);
-        let data_files = root.join("Data Files");
         let output_dir = root.join("Output");
         let merged_lands_dir = root.join("MergedLands");
         let config_dir = root.join("Config");
         let data_local = root.join("DataLocal");
         let openmw_cfg = root.join("openmw.cfg");
 
-        fs::create_dir_all(&data_files).expect("create Data Files dir");
+        for plugin in plugin_names {
+            assert!(
+                data_files.join(plugin).is_file(),
+                "missing fixture input {plugin}"
+            );
+        }
         fs::create_dir_all(&output_dir).expect("create output dir");
         fs::create_dir_all(&config_dir).expect("create config dir");
         fs::create_dir_all(&data_local).expect("create data-local dir");
@@ -2682,8 +2693,12 @@ mod tests {
             vec![],
         );
 
-        let (root, output_dir) =
-            run_vanilla_merge("e2e_single_plugin_run", &[plugin_name], "MergedTest.esp");
+        let (root, output_dir) = run_vanilla_merge(
+            "e2e_single_plugin_run",
+            &data_files,
+            &[plugin_name],
+            "MergedTest.esp",
+        );
         let merged_path = output_dir.join("MergedTest.esp");
         let merged = load_output_plugin(&merged_path);
         assert!(matches!(
@@ -2849,15 +2864,23 @@ mod tests {
             vec![],
         );
 
-        let (_root_with_cells, output_with_cells) =
-            run_openmw_merge("e2e_cells_on", &[plugin_a, plugin_b], "WithCells.esp");
+        let (_root_with_cells, output_with_cells) = run_openmw_merge(
+            "e2e_cells_on",
+            &data_files,
+            &[plugin_a, plugin_b],
+            "WithCells.esp",
+        );
         let with_cells = load_output_plugin(&output_with_cells.join("WithCells.esp"));
         let (_, with_cell_count, with_land_count) = count_objects(&with_cells);
         assert_eq!(with_cell_count, 0);
         assert_eq!(with_land_count, 0);
 
-        let (_root_no_cells, output_no_cells) =
-            run_openmw_merge("e2e_cells_off", &[plugin_a, plugin_b], "NoCells.esp");
+        let (_root_no_cells, output_no_cells) = run_openmw_merge(
+            "e2e_cells_off",
+            &data_files,
+            &[plugin_a, plugin_b],
+            "NoCells.esp",
+        );
         let no_cells = load_output_plugin(&output_no_cells.join("NoCells.esp"));
         let (_, no_cell_count, no_land_count) = count_objects(&no_cells);
         assert_eq!(no_cell_count, 0);
@@ -2986,6 +3009,7 @@ mod tests {
 
         let (_root_run, output_dir) = run_openmw_merge(
             "e2e_ltex_prune_run",
+            &data_files,
             &[plugin_name, "TexturesPatch.esp"],
             "LtexOut.esp",
         );
@@ -3029,6 +3053,7 @@ mod tests {
 
         let (_root_run, output_dir) = run_openmw_merge(
             "e2e_overlapping_cleaned_run",
+            &data_files,
             &["A.esp", "B.esp"],
             "Both.esp",
         );
