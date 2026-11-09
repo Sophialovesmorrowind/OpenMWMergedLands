@@ -53,20 +53,21 @@ fn convert_landscape_diff_to_landscape(
                 )
             })?,
         );
+    }
 
-        let normals = if let Some(normals) = landscape.vertex_normals.as_ref() {
-            normals.to_terrain()
-        } else {
-            calculate_vertex_normals_map(&height_map.to_terrain())
-        };
+    let normals = if let Some(normals) = landscape.vertex_normals.as_ref() {
+        Some(normals.to_terrain())
+    } else {
+        landscape
+            .height_map
+            .as_ref()
+            .map(|heights| calculate_vertex_normals_map(&heights.to_terrain()))
+    };
+    if let Some(normals) = normals {
+        new_landscape.landscape_flags |= LandscapeFlags::USES_VERTEX_HEIGHTS_AND_NORMALS;
         new_landscape.vertex_normals = Some(VertexNormals {
             data: Box::new(convert_terrain_map(&normals, Vec3::into)),
         });
-    } else {
-        assert!(
-            landscape.vertex_normals.is_none(),
-            "cannot write vertex normals without vertex heights"
-        );
     }
 
     if let Some(vertex_colors) = landscape.vertex_colors.as_ref() {
@@ -278,7 +279,7 @@ mod tests {
     use crate::land::grid_access::Index2D;
     use crate::land::height_map::{calculate_vertex_heights_tes3, try_calculate_height_map};
     use crate::land::landscape_diff::LandscapeDiff;
-    use crate::land::terrain_map::{LandData, Vec2};
+    use crate::land::terrain_map::{LandData, Vec2, Vec3};
     use crate::land::textures::{IndexVTEX, KnownTextures, RemappedTextures};
     use crate::merge::relative_terrain_map::RelativeTerrainMap;
     use crate::test_support::create_temp_dir as unique_temp_dir;
@@ -427,6 +428,27 @@ mod tests {
         assert_eq!(indices.data[1][1], 1);
         assert!(converted.vertex_heights.is_some());
         assert!(converted.vertex_normals.is_some());
+        assert!(
+            converted
+                .landscape_flags
+                .contains(LandscapeFlags::USES_VERTEX_HEIGHTS_AND_NORMALS)
+        );
+    }
+
+    #[test]
+    fn convert_landscape_diff_preserves_normals_without_inventing_heights() {
+        let mut landscape =
+            landscape_diff_with_only_texture(plugin("normals.esp"), Vec2::new(0, 0), 0);
+        landscape.vertex_normals =
+            Some(RelativeTerrainMap::empty([[Vec3::new(64, 0, 110); 65]; 65]));
+        let converted =
+            convert_landscape_diff_to_landscape(&landscape, &RemappedTextures::from(&[true]))
+                .expect("normal-only payload is valid");
+        assert!(converted.vertex_heights.is_none());
+        assert_eq!(
+            converted.vertex_normals.expect("normals").data[32][32],
+            [64, 0, 110]
+        );
         assert!(
             converted
                 .landscape_flags

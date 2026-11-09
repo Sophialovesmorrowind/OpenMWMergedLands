@@ -63,14 +63,22 @@ fn finalize_vertex_normals(landmass: &mut LandmassDiff, loaded_landmass: &Landma
         let Some(heights) = land.height_map.as_ref() else {
             continue;
         };
+
+        let authored = land
+            .vertex_normals
+            .as_ref()
+            .map(RelativeTerrainMap::to_terrain);
         let loaded = loaded_landmass.land.get(coords);
-        let loaded_heights = loaded.and_then(try_calculate_height_map);
-        let loaded_normals = loaded.and_then(vertex_normals);
-        let normals = recompute_vertex_normals(
-            &heights.to_terrain(),
-            loaded_heights.as_ref(),
-            loaded_normals.as_ref(),
-        );
+        let predecessors = land.plugins.iter().rev().filter_map(|(plugin, _)| {
+            plugin
+                .records
+                .objects_of_type::<Landscape>()
+                .find(|source| source.grid == (coords.x, coords.y))
+        });
+        let sources = loaded.into_iter().chain(predecessors).filter_map(|source| {
+            Some((try_calculate_height_map(source)?, vertex_normals(source)?))
+        });
+        let normals = recompute_vertex_normals(&heights.to_terrain(), authored.as_ref(), sources);
         land.vertex_normals = Some(RelativeTerrainMap::empty(normals));
     }
 }

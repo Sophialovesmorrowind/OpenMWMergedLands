@@ -1,5 +1,5 @@
 use crate::LandmassDiff;
-use crate::land::grid_access::{GridAccessor2D, Index2D, SquareGridIterator};
+use crate::land::grid_access::Index2D;
 use crate::land::terrain_map::Vec2;
 use crate::merge::relative_terrain_map::RelativeTerrainMap;
 use log::{debug, trace};
@@ -316,21 +316,6 @@ pub fn repair_landmass_seams(merged: &mut LandmassDiff) -> usize {
         }
     }
 
-    for land in merged.land.values_mut() {
-        if let Some(vertex_normals) = land.vertex_normals.as_mut() {
-            if let Some(height_map) = land.height_map.as_ref() {
-                let allowed = height_map.differences();
-                vertex_normals.clean_some(
-                    vertex_normals
-                        .iter_grid()
-                        .filter(|coords| !allowed.get(*coords)),
-                );
-            } else {
-                vertex_normals.clean_all();
-            }
-        }
-    }
-
     num_seams_repaired
 }
 
@@ -512,7 +497,7 @@ mod tests {
     }
 
     #[test]
-    fn normal_mask_preserves_repaired_vertices_and_clears_other_differences() {
+    fn seam_repair_leaves_authored_normals_for_geometry_validation() {
         run_with_large_stack(|| {
             let left_coords = Vec2::new(0, 0);
             let right_coords = Vec2::new(1, 0);
@@ -539,13 +524,13 @@ mod tests {
                 .expect("normals");
             assert_eq!(normals.get_value(seam), Vec3::new(1, 2, 3));
             assert!(normals.has_difference(seam));
-            assert_eq!(normals.get_value(interior), Vec3::new(0, 0, 127));
-            assert!(!normals.has_difference(interior));
+            assert_eq!(normals.get_value(interior), Vec3::new(4, 5, 6));
+            assert!(normals.has_difference(interior));
         });
     }
 
     #[test]
-    fn missing_height_map_keeps_cells_and_clears_normal_differences() {
+    fn missing_height_map_keeps_independent_normal_data() {
         run_with_large_stack(|| {
             let left_coords = Vec2::new(0, 0);
             let right_coords = Vec2::new(1, 0);
@@ -565,8 +550,8 @@ mod tests {
                 .vertex_normals
                 .as_ref()
                 .expect("normals");
-            assert_eq!(normals.get_value(Index2D::new(0, 10)), Vec3::new(0, 0, 127));
-            assert!(!normals.has_difference(Index2D::new(0, 10)));
+            assert_eq!(normals.get_value(Index2D::new(0, 10)), Vec3::new(1, 2, 3));
+            assert!(normals.has_difference(Index2D::new(0, 10)));
         });
     }
 }

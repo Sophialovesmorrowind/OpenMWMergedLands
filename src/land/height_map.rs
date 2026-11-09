@@ -168,25 +168,34 @@ pub fn calculate_vertex_normals_map<const T: usize>(
     terrain
 }
 
-/// Preserve the loaded author's normals wherever their triangle heights still match.
-/// Recompute changed triangles from the final stored height grid before cleanup.
+/// Keep selected authored vectors wherever an input supplies them for the final geometry.
+/// Source grids are loaded lazily: the winning LAND usually validates the whole cell.
+/// Recompute only vectors whose source geometry no longer matches after merging or repair.
 pub fn recompute_vertex_normals(
     heights: &TerrainMap<i32, 65>,
-    loaded_heights: Option<&TerrainMap<i32, 65>>,
-    loaded_normals: Option<&TerrainMap<Vec3<i8>, 65>>,
+    authored: Option<&TerrainMap<Vec3<i8>, 65>>,
+    sources: impl IntoIterator<Item = (TerrainMap<i32, 65>, TerrainMap<Vec3<i8>, 65>)>,
 ) -> TerrainMap<Vec3<i8>, 65> {
-    let (Some(loaded_heights), Some(loaded_normals)) = (loaded_heights, loaded_normals) else {
+    let Some(authored) = authored else {
         return calculate_vertex_normals_map(heights);
     };
 
-    let mut normals = *loaded_normals;
-    for coords in heights.iter_grid() {
-        let unchanged = normal_sample_coords::<65>(coords)
-            .into_iter()
-            .all(|sample| heights.get(sample) == loaded_heights.get(sample));
-        if !unchanged {
-            *normals.get_mut(coords) = calculate_vertex_normal(heights, coords);
+    let mut normals = *authored;
+    let mut pending: Vec<_> = heights.iter_grid().collect();
+    for (source_heights, source_normals) in sources {
+        pending.retain(|coords| {
+            normals.get(*coords) != source_normals.get(*coords)
+                || normal_sample_coords::<65>(*coords)
+                    .into_iter()
+                    .any(|sample| heights.get(sample) != source_heights.get(sample))
+        });
+        if pending.is_empty() {
+            return normals;
         }
+    }
+
+    for coords in pending {
+        *normals.get_mut(coords) = calculate_vertex_normal(heights, coords);
     }
 
     normals
@@ -252,7 +261,11 @@ mod tests {
         let mut authored = [[super::Vec3::new(7, -3, 2); 65]; 65];
         authored[10][10] = super::Vec3::default();
         assert_eq!(
-            super::recompute_vertex_normals(&heights, Some(&heights), Some(&authored)),
+            super::recompute_vertex_normals(
+                &heights,
+                Some(&authored),
+                std::iter::once((*heights, authored))
+            ),
             authored
         );
     }
@@ -265,7 +278,11 @@ mod tests {
         heights[32][64] = 128;
         heights[64][32] = 128;
         let authored = [[super::Vec3::new(7, -3, 2); 65]; 65];
-        let normals = super::recompute_vertex_normals(&heights, Some(&loaded), Some(&authored));
+        let normals = super::recompute_vertex_normals(
+            &heights,
+            Some(&authored),
+            std::iter::once((*loaded, authored)),
+        );
         let generated = super::calculate_vertex_normals_map(&heights);
 
         for (x, y) in [
@@ -284,10 +301,26 @@ mod tests {
     }
 
     #[test]
+    fn normals_validate_earlier_authored_sources_without_loading_unneeded_ones() {
+        let heights = flat_heights();
+        let authored = [[super::Vec3::new(64, 0, 110); 65]; 65];
+        let winning = [[super::Vec3::new(-64, 0, 110); 65]; 65];
+        let sources = std::iter::once((*heights, winning))
+            .chain(std::iter::once((*heights, authored)))
+            .chain(std::iter::from_fn(|| {
+                panic!("later sources are unnecessary")
+            }));
+        assert_eq!(
+            super::recompute_vertex_normals(&heights, Some(&authored), sources),
+            authored
+        );
+    }
+
+    #[test]
     fn normals_are_generated_when_the_winner_has_no_normal_payload() {
         let heights = flat_heights();
         assert_eq!(
-            super::recompute_vertex_normals(&heights, Some(&heights), None),
+            super::recompute_vertex_normals(&heights, None, []),
             super::calculate_vertex_normals_map(&heights)
         );
     }

@@ -12,7 +12,7 @@ use crate::land::landscape_diff::LandscapeDiff;
 use crate::land::terrain_map::{LandData, Vec2};
 use crate::land::textures::{IndexVTEX, KnownTextures, RemappedTextures};
 use crate::merge::merge_strategy::apply_merge_strategy;
-use crate::merge::relative_terrain_map::{IsModified, RelativeTerrainMap};
+use crate::merge::relative_terrain_map::RelativeTerrainMap;
 use crate::repair::cleaning::{clean_known_textures, clean_landmass_diff};
 use crate::repair::debugging::add_debug_vertex_colors_to_landmass;
 use crate::repair::height_encoding::repair_height_encoding;
@@ -1296,23 +1296,6 @@ fn merge_landscape_diff(
         load_order_auto_strategy(plugin.meta.height_map.conflict_strategy),
     );
 
-    if let Some(vertex_normals) = merged.vertex_normals.as_mut() {
-        if let Some(height_map) = merged.height_map.as_ref() {
-            let differences = height_map.differences();
-            vertex_normals.clean_some(
-                differences
-                    .iter_grid()
-                    .filter(|coords| !differences.get(*coords)),
-            );
-        } else {
-            vertex_normals.clean_all();
-        }
-    }
-
-    if merged.vertex_normals.is_modified() {
-        assert!(merged.height_map.is_modified());
-    }
-
     merged.world_map_data = apply_merge_strategy(
         coords,
         plugin,
@@ -1765,6 +1748,59 @@ mod tests {
 
     fn idx(v: u16) -> IndexVTEX {
         IndexVTEX::new(v)
+    }
+
+    #[test]
+    fn normal_only_edits_follow_the_selected_merge_rule() {
+        use crate::io::meta_schema::ConflictStrategy;
+
+        for strategy in [ConflictStrategy::Auto, ConflictStrategy::Ignore] {
+            let mut first = fixture_land((0, 0), 64, None);
+            first.vertex_normals = Some(VertexNormals {
+                data: Box::new([[[64, 0, 110]; 65]; 65]),
+            });
+            let mut last = fixture_land((0, 0), 64, None);
+            last.vertex_normals = Some(VertexNormals {
+                data: Box::new([[[-64, 0, 110]; 65]; 65]),
+            });
+            let meta = PluginMeta {
+                height_map: MergeSettings {
+                    conflict_strategy: strategy,
+                    ..MergeSettings::default()
+                },
+                ..PluginMeta::default()
+            };
+            let plugins = vec![
+                parsed_plugin_with_land("First.esp", first, PluginMeta::default()),
+                parsed_plugin_with_land("Last.esp", last, meta),
+            ];
+            let (mut merged, loaded) = merge_test_plugins(plugins);
+            crate::repair::height_encoding::repair_height_encoding(&mut merged);
+            clean_landmass_diff(&mut merged, &loaded);
+
+            if strategy == ConflictStrategy::Auto {
+                assert!(
+                    merged.land.is_empty(),
+                    "the game already loads the chosen later normal edit"
+                );
+            } else {
+                let remapped = crate::land::textures::RemappedTextures::from(&[true]);
+                let output = crate::io::save_to_plugin::convert_landmass_diff_to_landmass(
+                    &merged, &remapped,
+                )
+                .expect("valid LAND");
+                let coords = crate::Vec2::new(0, 0);
+                let land = output
+                    .land
+                    .get(&coords)
+                    .expect("a genuine normal-only override must remain");
+                assert_eq!(land.vertex_heights, loaded.land[&coords].vertex_heights);
+                assert_eq!(
+                    land.vertex_normals.as_ref().expect("normals").data[32][32],
+                    [64, 0, 110]
+                );
+            }
+        }
     }
 
     #[test]

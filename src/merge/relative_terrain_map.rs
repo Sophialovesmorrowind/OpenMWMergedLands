@@ -55,11 +55,6 @@ impl<U: RelativeTo, const T: usize> RelativeTerrainMap<U, T> {
         output
     }
 
-    /// Read-only access to the `true` or `false` differences grid.
-    pub fn differences(&self) -> &TerrainMap<bool, T> {
-        &self.data.has_difference
-    }
-
     /// Get the value at `coords` by adding the difference to the reference.
     pub fn get_value(&self, coords: Index2D) -> U {
         <U as RelativeTo>::add(
@@ -90,25 +85,6 @@ impl<U: RelativeTo, const T: usize> RelativeTerrainMap<U, T> {
                 <U as RelativeTo>::Delta::default()
             );
             false
-        }
-    }
-
-    /// Remove all differences.
-    pub fn clean_all(&mut self) {
-        for v in self.data.has_difference.as_flattened_mut() {
-            *v = false;
-        }
-
-        for v in self.data.relative.as_flattened_mut() {
-            *v = <U as RelativeTo>::Delta::default();
-        }
-    }
-
-    /// Remove differences from all coordinates passed via `iter`.
-    pub fn clean_some(&mut self, iter: impl Iterator<Item = Index2D>) {
-        for coords in iter {
-            *self.data.has_difference.get_mut(coords) = false;
-            *self.data.relative.get_mut(coords) = <U as RelativeTo>::Delta::default();
         }
     }
 
@@ -184,25 +160,6 @@ mod tests {
         assert!(!map.has_difference(Index2D::new(0, 0)));
         assert!(map.has_difference(Index2D::new(1, 0)));
         assert!(map.has_difference(Index2D::new(0, 1)));
-    }
-
-    #[test]
-    fn clean_some_and_clean_all_clear_differences() {
-        let mut map = RelativeTerrainMap::<i32, 2>::empty([[0i32; 2]; 2]);
-        let c0 = Index2D::new(0, 0);
-        let c1 = Index2D::new(1, 1);
-
-        map.set_value(c0, 7);
-        map.set_value(c1, 9);
-
-        map.clean_some([c0].into_iter());
-        assert!(!map.has_difference(c0));
-        assert!(map.has_difference(c1));
-
-        map.clean_all();
-        assert!(!map.has_difference(c0));
-        assert!(!map.has_difference(c1));
-        assert!(!map.is_modified());
     }
 
     #[test]
