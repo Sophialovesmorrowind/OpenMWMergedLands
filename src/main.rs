@@ -685,53 +685,16 @@ fn merge_all(cli: &Cli) -> Result<()> {
     debug!("Parsed plugins in {:?}", phase_start.elapsed());
     phase_start = Instant::now();
 
-    let (reference_landmass, modded_landmasses, raw_load_order_landmass) =
-        create_reference_and_modded_landmasses(&parsed_plugins, &mut known_textures, &app_config);
-    debug!(
-        "Built reference and modded landmasses in {:?}",
-        phase_start.elapsed()
-    );
-    phase_start = Instant::now();
-
-    debug!(
-        "Found {} masters and {} plugins",
-        parsed_plugins.masters.len(),
-        parsed_plugins.plugins.len(),
-    );
-    debug!("Found {} unique LTEX records", known_textures.len());
-    debug!("{} plugins contain LAND records", modded_landmasses.len());
-
-    // STEP 2:
-    // Create the MergedLands.esp:
-    //  - Calculate the "naive" TES3 merge of the ordered ESMs.
-    info!(":: Creating Reference Land ::");
-
-    debug!(
-        "Reference contains {} LAND records",
-        reference_landmass.land.len()
-    );
-
-    let mut merged_lands = create_merged_lands_from_reference(&reference_landmass);
-    debug!(
-        "Created merged reference baseline in {:?}",
-        phase_start.elapsed()
-    );
-    phase_start = Instant::now();
-
-    // STEP 3:
-    // For each LandmassDiff, [IMPLEMENTATION NOTE] same order as Plugin:
-    //  - Merge into `MergedLands.esp`.
-    //     - If LAND does not exist in MergedLands.esp, insert.
-    //     - Else, apply merge strategies.
-    //        - Each merge is applied to the result of any previous merge.
-    //        - Each merge is tracked so it can be referenced in the future.
-    //        - Merge strategies may use the optional `.mergedlands.toml` for conflict resolution.
-    //  - Iterate through updated landmass and check for seams on any modified cell.
     info!(":: Merging Lands ::");
-
-    for modded_landmass in &modded_landmasses {
-        merge_landmass_into(&mut merged_lands, modded_landmass);
-    }
+    let retain_diffs = cli.conflict_images || cli.add_debug_vertex_colors;
+    let (mut merged_lands, modded_landmasses, raw_load_order_landmass) = merge_parsed_landmasses(
+        &parsed_plugins,
+        &mut known_textures,
+        &app_config,
+        retain_diffs,
+    );
+    debug!("Merged plugin terrain in {:?}", phase_start.elapsed());
+    phase_start = Instant::now();
 
     remove_heightless_overrides_of_ignored_cells(
         &mut merged_lands,
@@ -1155,16 +1118,14 @@ fn remove_ignored_cells(landmass: &mut Landmass, config: &MergedLandsConfig) {
         .retain(|coords, _| !ignored_cells.contains(coords));
 }
 
-/// Builds the initial reference landmass and the plugin diffs used for the final merge.
-///
-/// Plugin diffs are computed against the rolling winning LAND state from load order. That keeps
-/// each diff local to what the plugin actually changed relative to previous winners, rather than
-/// pretending there is a useful engine-specific LAND merge model. There isn't. Thankfully.
-fn create_reference_and_modded_landmasses(
+/// Merge one plugin diff at a time against the rolling terrain reference.
+/// Retain per-plugin grids only when conflict images or debug colors need them later.
+fn merge_parsed_landmasses(
     parsed_plugins: &ParsedPlugins,
     known_textures: &mut KnownTextures,
     config: &MergedLandsConfig,
-) -> (Arc<Landmass>, Vec<LandmassDiff>, Arc<Landmass>) {
+    retain_diffs: bool,
+) -> (LandmassDiff, Vec<LandmassDiff>, Arc<Landmass>) {
     let mut reference_landmass =
         Landmass::new(Arc::new(ParsedPlugin::empty("ReferenceLandmass.esp")));
     let mut raw_load_order_landmass = reference_landmass.clone();
@@ -1178,7 +1139,8 @@ fn create_reference_and_modded_landmasses(
         merge_landmass_layers_into(&mut reference_landmass, &landmass);
     }
 
-    let mut rolling_reference = reference_landmass.clone();
+    let mut merged = create_merged_lands_from_reference(&reference_landmass);
+    let mut rolling_reference = reference_landmass;
     let mut modded_landmasses = Vec::new();
 
     for plugin in &parsed_plugins.plugins {
@@ -1199,15 +1161,16 @@ fn create_reference_and_modded_landmasses(
             continue;
         }
 
-        modded_landmasses.push(find_landmass_diff(&landmass, &rolling_reference));
+        let diff = find_landmass_diff(&landmass, &rolling_reference);
+        merge_landmass_into(&mut merged, &diff);
         merge_allowed_landmass_into(&mut rolling_reference, &landmass);
+
+        if retain_diffs {
+            modded_landmasses.push(diff);
+        }
     }
 
-    (
-        Arc::new(reference_landmass),
-        modded_landmasses,
-        Arc::new(raw_load_order_landmass),
-    )
+    (merged, modded_landmasses, Arc::new(raw_load_order_landmass))
 }
 
 /// A texture-only predecessor cannot replace an ignored winner's height-bearing LAND:
@@ -1435,8 +1398,7 @@ fn create_merged_lands_from_reference(reference: &Landmass) -> LandmassDiff {
 #[cfg(test)]
 mod tests {
     use super::{
-        create_merged_lands_from_reference, create_reference_and_modded_landmasses,
-        merge_landmass_into, merge_landscape_layers_into, merge_load_order_texture_indices,
+        merge_landscape_layers_into, merge_load_order_texture_indices, merge_parsed_landmasses,
         run_merge_on_worker_thread,
     };
     use crate::io::app_config::{CONFIG_FILE_NAME, MergedLandsConfig};
@@ -1580,13 +1542,8 @@ mod tests {
             plugins,
         };
         let mut known_textures = crate::land::textures::KnownTextures::new();
-        let (reference_landmass, modded_landmasses, raw_load_order_landmass) =
-            create_reference_and_modded_landmasses(&parsed_plugins, &mut known_textures, config);
-        let mut merged_lands = create_merged_lands_from_reference(&reference_landmass);
-
-        for modded_landmass in &modded_landmasses {
-            merge_landmass_into(&mut merged_lands, modded_landmass);
-        }
+        let (merged_lands, _, raw_load_order_landmass) =
+            merge_parsed_landmasses(&parsed_plugins, &mut known_textures, config, false);
 
         (merged_lands, raw_load_order_landmass)
     }
@@ -2311,6 +2268,44 @@ mod tests {
     }
 
     #[test]
+    fn streaming_and_retained_history_produce_identical_terrain() {
+        let parsed = ParsedPlugins {
+            masters: Vec::new(),
+            plugins: vec![
+                parsed_plugin_with_land(
+                    "Base.esm",
+                    fixture_land((0, 0), 256, None),
+                    PluginMeta::default(),
+                ),
+                parsed_plugin_with_land(
+                    "Patch.esp",
+                    fixture_land((0, 0), 512, None),
+                    PluginMeta::default(),
+                ),
+            ],
+        };
+        let config = MergedLandsConfig::default();
+        let mut textures = crate::land::textures::KnownTextures::new();
+        let (streamed, discarded, loaded) =
+            merge_parsed_landmasses(&parsed, &mut textures, &config, false);
+        let mut textures = crate::land::textures::KnownTextures::new();
+        let (retained, history, retained_loaded) =
+            merge_parsed_landmasses(&parsed, &mut textures, &config, true);
+
+        assert!(discarded.is_empty());
+        assert_eq!(history.len(), 2);
+        assert_eq!(loaded.land, retained_loaded.land);
+        let remapped = crate::land::textures::RemappedTextures::from(&[true]);
+        let streamed =
+            crate::io::save_to_plugin::convert_landmass_diff_to_landmass(&streamed, &remapped)
+                .expect("valid LAND");
+        let retained =
+            crate::io::save_to_plugin::convert_landmass_diff_to_landmass(&retained, &remapped)
+                .expect("valid LAND");
+        assert_eq!(streamed.land, retained.land);
+    }
+
+    #[test]
     fn excluded_height_does_not_advance_rolling_reference() {
         run_with_large_stack(|| {
             let coords = (0, 0);
@@ -2334,10 +2329,11 @@ mod tests {
                 plugins: vec![plugin_a, plugin_b],
             };
             let mut known_textures = crate::land::textures::KnownTextures::new();
-            let (_, modded_landmasses, _) = create_reference_and_modded_landmasses(
+            let (_, modded_landmasses, _) = merge_parsed_landmasses(
                 &parsed_plugins,
                 &mut known_textures,
                 &MergedLandsConfig::default(),
+                true,
             );
             let land = modded_landmasses[1]
                 .land
@@ -2412,17 +2408,12 @@ mod tests {
                 plugins: vec![plugin],
             };
             let mut known_textures = crate::land::textures::KnownTextures::new();
-            let (reference_landmass, modded_landmasses, raw_load_order_landmass) =
-                create_reference_and_modded_landmasses(
-                    &parsed_plugins,
-                    &mut known_textures,
-                    &MergedLandsConfig::default(),
-                );
-            let mut merged_lands = create_merged_lands_from_reference(&reference_landmass);
-
-            for modded_landmass in &modded_landmasses {
-                merge_landmass_into(&mut merged_lands, modded_landmass);
-            }
+            let (mut merged_lands, _, raw_load_order_landmass) = merge_parsed_landmasses(
+                &parsed_plugins,
+                &mut known_textures,
+                &MergedLandsConfig::default(),
+                false,
+            );
 
             let coords = crate::Vec2::new(coords.0, coords.1);
             assert!(merged_lands.land.contains_key(&coords));
