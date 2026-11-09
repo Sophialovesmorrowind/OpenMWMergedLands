@@ -13,7 +13,9 @@ use crate::land::terrain_map::{LandData, Vec2};
 use crate::land::textures::{IndexVTEX, KnownTextures, RemappedTextures};
 use crate::merge::merge_strategy::apply_merge_strategy;
 use crate::merge::relative_terrain_map::RelativeTerrainMap;
-use crate::repair::cleaning::{clean_known_textures, clean_landmass_diff};
+use crate::repair::cleaning::{
+    clean_known_textures, clean_landmass_diff, complete_landmass_layers,
+};
 use crate::repair::debugging::add_debug_vertex_colors_to_landmass;
 use crate::repair::height_encoding::repair_height_encoding;
 use crate::term_style::{bold, bold_red};
@@ -702,6 +704,8 @@ fn merge_all(cli: &Cli) -> Result<()> {
         &parsed_plugins,
         &app_config,
     );
+
+    complete_landmass_layers(&mut merged_lands, &raw_load_order_landmass);
 
     // We fix seams as a post-processing step because individual mods can introduce
     // tears into the landscape that would be fixed by subsequent mods. (e.g. patches)
@@ -1754,12 +1758,33 @@ mod tests {
     fn normal_only_edits_follow_the_selected_merge_rule() {
         use crate::io::meta_schema::ConflictStrategy;
 
-        for strategy in [ConflictStrategy::Auto, ConflictStrategy::Ignore] {
-            let mut first = fixture_land((0, 0), 64, None);
+        let auxiliary_layers = LandscapeFlags::USES_VERTEX_COLORS | LandscapeFlags::USES_TEXTURES;
+        for (height, strategy, enabled_layers) in [
+            (0, ConflictStrategy::Auto, auxiliary_layers),
+            (0, ConflictStrategy::Ignore, auxiliary_layers),
+            (64, ConflictStrategy::Auto, auxiliary_layers),
+            (64, ConflictStrategy::Ignore, auxiliary_layers),
+            (64, ConflictStrategy::Ignore, LandscapeFlags::empty()),
+        ] {
+            let mut first = fixture_land_with_vertex_color((0, 0), height, Vec3::default());
+            let heights: Box<[[i32; 65]; 65]> = vec![[height; 65]; 65]
+                .into_boxed_slice()
+                .try_into()
+                .expect("65 rows");
+            first.vertex_heights =
+                Some(calculate_vertex_heights_tes3(&heights).expect("flat heights"));
+            first.landscape_flags.remove(auxiliary_layers);
+            first.landscape_flags |= enabled_layers;
+            first.texture_indices = Some(TextureIndices {
+                data: Box::new([[0; 16]; 16]),
+            });
+            first.world_map_data = Some(tes3::esp::WorldMapData {
+                data: Box::new([[0; 9]; 9]),
+            });
             first.vertex_normals = Some(VertexNormals {
                 data: Box::new([[[64, 0, 110]; 65]; 65]),
             });
-            let mut last = fixture_land((0, 0), 64, None);
+            let mut last = first.clone();
             last.vertex_normals = Some(VertexNormals {
                 data: Box::new([[[-64, 0, 110]; 65]; 65]),
             });
@@ -1794,7 +1819,20 @@ mod tests {
                     .land
                     .get(&coords)
                     .expect("a genuine normal-only override must remain");
-                assert_eq!(land.vertex_heights, loaded.land[&coords].vertex_heights);
+                let mut expected = loaded.land[&coords].clone();
+                if !enabled_layers.contains(LandscapeFlags::USES_VERTEX_COLORS) {
+                    expected.vertex_colors = None;
+                }
+                if !enabled_layers.contains(LandscapeFlags::USES_TEXTURES) {
+                    expected.texture_indices = None;
+                }
+                expected.vertex_normals = Some(VertexNormals {
+                    data: Box::new([[[64, 0, 110]; 65]; 65]),
+                });
+                assert!(
+                    *land == expected,
+                    "a normal-only override must preserve every other winning layer"
+                );
                 assert_eq!(
                     land.vertex_normals.as_ref().expect("normals").data[32][32],
                     [64, 0, 110]
@@ -2770,13 +2808,23 @@ mod tests {
             let data = unique_temp_dir("ltex_override_inputs");
             let base = data.join("Base.esm");
             let patch = data.join("Textures.esp");
+            let lands = [(0, 0), (1, 512)]
+                .into_iter()
+                .map(|(x, height)| {
+                    let mut land = fixture_land((x, 0), height, Some(1));
+                    let heights: Box<[[i32; 65]; 65]> = vec![[height; 65]; 65]
+                        .into_boxed_slice()
+                        .try_into()
+                        .expect("65 rows");
+                    land.vertex_heights =
+                        Some(calculate_vertex_heights_tes3(&heights).expect("flat heights"));
+                    land
+                })
+                .collect();
             write_plugin_file(
                 &base,
                 "Base.esm",
-                vec![
-                    fixture_land((0, 0), 0, Some(1)),
-                    fixture_land((1, 0), 512, Some(1)),
-                ],
+                lands,
                 vec![fixture_ltex("Grass01", 0, "old_grass.dds")],
                 Vec::new(),
             );
@@ -2813,6 +2861,15 @@ mod tests {
             run_merge_on_worker_thread(cli).expect("merge texture override");
             let output = load_output_plugin(&data.join("Result.esp"));
             assert_eq!(output.objects_of_type::<Landscape>().count(), 2);
+            for land in output.objects_of_type::<Landscape>() {
+                let heights = crate::land::height_map::try_calculate_height_map(land)
+                    .expect("carried heights");
+                let edge_x = if land.grid.0 == 0 { 64 } else { 0 };
+                assert_eq!(
+                    heights[32][edge_x], 256,
+                    "zero-height cells participate in seam repair"
+                );
+            }
             let textures: Vec<_> = output.objects_of_type::<LandscapeTexture>().collect();
             assert_eq!(
                 textures.len(),

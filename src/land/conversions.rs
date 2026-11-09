@@ -19,6 +19,13 @@ pub fn convert_terrain_map<I: Copy, U: Copy + Default, const T: usize>(
 
 /// Access the `vertex_normals` of a [Landscape] as a [`TerrainMap`].
 pub fn vertex_normals(land: &Landscape) -> Option<TerrainMap<Vec3<i8>, 65>> {
+    if !land
+        .landscape_flags
+        .contains(LandscapeFlags::USES_VERTEX_HEIGHTS_AND_NORMALS)
+    {
+        return None;
+    }
+
     land.vertex_normals
         .as_ref()
         .map(|record| convert_terrain_map(&record.data, Vec3::from))
@@ -26,6 +33,13 @@ pub fn vertex_normals(land: &Landscape) -> Option<TerrainMap<Vec3<i8>, 65>> {
 
 /// Access the `vertex_colors` of a [Landscape] as a [`TerrainMap`].
 pub fn vertex_colors(land: &Landscape) -> Option<TerrainMap<Vec3<u8>, 65>> {
+    if !land
+        .landscape_flags
+        .contains(LandscapeFlags::USES_VERTEX_COLORS)
+    {
+        return None;
+    }
+
     land.vertex_colors
         .as_ref()
         .map(|record| convert_terrain_map(&record.data, Vec3::from))
@@ -40,6 +54,10 @@ pub fn world_map_data(land: &Landscape) -> Option<TerrainMap<u8, 9>> {
 
 /// Access the `texture_indices` of a [Landscape] as a [`TerrainMap`].
 pub fn texture_indices(land: &Landscape) -> Option<TerrainMap<IndexVTEX, 16>> {
+    if !land.landscape_flags.contains(LandscapeFlags::USES_TEXTURES) {
+        return None;
+    }
+
     land.texture_indices
         .as_ref()
         .map(|record| convert_terrain_map(&record.data, IndexVTEX::new))

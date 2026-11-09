@@ -57,6 +57,46 @@ fn update_known_textures(plugin: &Arc<ParsedPlugin>, known_textures: &mut KnownT
     }
 }
 
+/// An emitted LAND replaces every layer, including layers that were not merged.
+fn preserve_untouched_loaded_layers(land: &mut LandscapeDiff, loaded: Option<&Landscape>) {
+    if land.height_map.is_none() {
+        land.height_map = loaded
+            .and_then(try_calculate_height_map)
+            .map(RelativeTerrainMap::empty);
+    }
+
+    if land.vertex_normals.is_none() {
+        land.vertex_normals = loaded
+            .and_then(vertex_normals)
+            .map(RelativeTerrainMap::empty);
+    }
+
+    if land.vertex_colors.is_none() {
+        land.vertex_colors = loaded
+            .and_then(vertex_colors)
+            .map(RelativeTerrainMap::empty);
+    }
+
+    if land.texture_indices.is_none() {
+        land.texture_indices = loaded
+            .and_then(texture_indices)
+            .map(RelativeTerrainMap::empty);
+    }
+
+    if land.world_map_data.is_none() {
+        land.world_map_data = loaded
+            .and_then(world_map_data)
+            .map(RelativeTerrainMap::empty);
+    }
+}
+
+/// Carry unchanged winning layers before seam repair and whole-record replacement.
+pub fn complete_landmass_layers(landmass: &mut LandmassDiff, loaded_landmass: &Landmass) {
+    for (coords, land) in &mut landmass.land {
+        preserve_untouched_loaded_layers(land, loaded_landmass.land.get(coords));
+    }
+}
+
 /// Finalize normals while the complete terrain and the raw engine winner are available.
 fn finalize_vertex_normals(landmass: &mut LandmassDiff, loaded_landmass: &Landmass) {
     for (coords, land) in &mut landmass.land {
@@ -64,11 +104,11 @@ fn finalize_vertex_normals(landmass: &mut LandmassDiff, loaded_landmass: &Landma
             continue;
         };
 
+        let loaded = loaded_landmass.land.get(coords);
         let authored = land
             .vertex_normals
             .as_ref()
             .map(RelativeTerrainMap::to_terrain);
-        let loaded = loaded_landmass.land.get(coords);
         let predecessors = land.plugins.iter().rev().filter_map(|(plugin, _)| {
             plugin
                 .records
@@ -86,6 +126,7 @@ fn finalize_vertex_normals(landmass: &mut LandmassDiff, loaded_landmass: &Landma
 /// Remove any [`crate::LandscapeDiff`] from the [`LandmassDiff`] that would not change the final
 /// loaded LAND state.
 pub fn clean_landmass_diff(landmass: &mut LandmassDiff, loaded_landmass: &Landmass) {
+    complete_landmass_layers(landmass, loaded_landmass);
     assert_eq!(repair_landmass_seams(landmass), 0);
     finalize_vertex_normals(landmass, loaded_landmass);
 
