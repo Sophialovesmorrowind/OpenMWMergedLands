@@ -24,7 +24,7 @@ use tes3::esp::{
 fn convert_landscape_diff_to_landscape(
     landscape: &LandscapeDiff,
     remapped_textures: &RemappedTextures,
-) -> Landscape {
+) -> Result<Landscape> {
     let mut new_landscape = Landscape::default();
 
     assert!(!landscape.plugins.is_empty());
@@ -46,8 +46,14 @@ fn convert_landscape_diff_to_landscape(
     if let Some(height_map) = landscape.height_map.as_ref() {
         new_landscape.landscape_flags |= LandscapeFlags::USES_VERTEX_HEIGHTS_AND_NORMALS;
 
-        new_landscape.vertex_heights =
-            Some(calculate_vertex_heights_tes3(&height_map.to_terrain()));
+        new_landscape.vertex_heights = Some(
+            calculate_vertex_heights_tes3(&height_map.to_terrain()).with_context(|| {
+                format!(
+                    "Unable to encode LAND ({}, {})",
+                    landscape.coords.x, landscape.coords.y
+                )
+            })?,
+        );
 
         new_landscape.vertex_normals = Some(VertexNormals {
             data: Box::new(convert_terrain_map(
@@ -112,7 +118,7 @@ fn convert_landscape_diff_to_landscape(
         });
     }
 
-    new_landscape
+    Ok(new_landscape)
 }
 
 /// Converts a [`LandmassDiff`] to a [Landmass].
@@ -120,18 +126,18 @@ fn convert_landscape_diff_to_landscape(
 pub fn convert_landmass_diff_to_landmass(
     landmass: &LandmassDiff,
     remapped_textures: &RemappedTextures,
-) -> Landmass {
+) -> Result<Landmass> {
     let mut new_landmass = Landmass::new(landmass.plugin.clone());
     new_landmass.land.reserve(landmass.land.len());
     new_landmass.plugins.reserve(landmass.land.len());
 
     for (coords, land) in &landmass.land {
-        let landscape = convert_landscape_diff_to_landscape(land, remapped_textures);
+        let landscape = convert_landscape_diff_to_landscape(land, remapped_textures)?;
         let last_plugin = &land.plugins.last().expect("safe").0;
         new_landmass.insert_land_owned(*coords, last_plugin, landscape);
     }
 
-    new_landmass
+    Ok(new_landmass)
 }
 
 /// Creates a master record for plugin `name` by appending the size
@@ -297,7 +303,7 @@ mod tests {
             grid: coords,
             landscape_flags: LandscapeFlags::USES_VERTEX_HEIGHTS_AND_NORMALS
                 | LandscapeFlags::UNKNOWN,
-            vertex_heights: Some(calculate_vertex_heights_tes3(&heights)),
+            vertex_heights: Some(calculate_vertex_heights_tes3(&heights).expect("valid heights")),
             vertex_normals: Some(VertexNormals::default()),
             ..Landscape::default()
         }
@@ -411,7 +417,8 @@ mod tests {
         let landscape = landscape_diff_with_texture(plugin, Vec2::new(0, 0), 2);
         let remapped = RemappedTextures::from(&[true, true]);
 
-        let converted = convert_landscape_diff_to_landscape(&landscape, &remapped);
+        let converted =
+            convert_landscape_diff_to_landscape(&landscape, &remapped).expect("valid LAND");
         let indices = converted
             .texture_indices
             .expect("texture indices should be present");
@@ -432,7 +439,8 @@ mod tests {
         let landscape = landscape_diff_with_only_texture(plugin, Vec2::new(0, 0), 0);
         let remapped = RemappedTextures::from(&[true]);
 
-        let converted = convert_landscape_diff_to_landscape(&landscape, &remapped);
+        let converted =
+            convert_landscape_diff_to_landscape(&landscape, &remapped).expect("valid LAND");
 
         assert!(converted.vertex_heights.is_none());
         assert!(converted.vertex_normals.is_none());
@@ -454,7 +462,8 @@ mod tests {
         let landscape = landscape_diff_with_texture(plugin, Vec2::new(0, 0), 0);
         let remapped = RemappedTextures::from(&[true, true]);
 
-        let converted = convert_landscape_diff_to_landscape(&landscape, &remapped);
+        let converted =
+            convert_landscape_diff_to_landscape(&landscape, &remapped).expect("valid LAND");
         let indices = converted
             .texture_indices
             .expect("texture indices should be present");
@@ -482,7 +491,8 @@ mod tests {
         landmass_diff.land.insert(coords, landscape);
 
         let remapped = RemappedTextures::from(&[true]);
-        let converted = convert_landmass_diff_to_landmass(&landmass_diff, &remapped);
+        let converted =
+            convert_landmass_diff_to_landmass(&landmass_diff, &remapped).expect("valid LAND");
 
         assert!(converted.land.contains_key(&coords));
         assert!(converted.plugins.contains_key(&coords));
