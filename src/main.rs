@@ -2729,6 +2729,81 @@ mod tests {
     }
 
     #[test]
+    fn e2e_ltex_only_patch_keeps_its_intentional_override() {
+        for patch_id in ["Grass01", "gRaSs01"] {
+            let data = unique_temp_dir("ltex_override_inputs");
+            let base = data.join("Base.esm");
+            let patch = data.join("Textures.esp");
+            write_plugin_file(
+                &base,
+                "Base.esm",
+                vec![
+                    fixture_land((0, 0), 0, Some(1)),
+                    fixture_land((1, 0), 512, Some(1)),
+                ],
+                vec![fixture_ltex("Grass01", 0, "old_grass.dds")],
+                Vec::new(),
+            );
+            write_plugin_file(
+                &patch,
+                "Textures.esp",
+                Vec::new(),
+                vec![fixture_ltex(patch_id, 17, "new_grass.dds")],
+                Vec::new(),
+            );
+            let cfg = data.join("openmw.cfg");
+            fs::write(
+                &cfg,
+                format!(
+                    "data=\"{}\"\ncontent=Base.esm\ncontent=Textures.esp\n",
+                    data.display()
+                ),
+            )
+            .expect("write config");
+            let cli = crate::cli::Cli::try_parse_from([
+                "merged_lands",
+                "--openmw-cfg",
+                cfg.to_str().expect("config path"),
+                "--config-dir",
+                data.to_str().expect("data path"),
+                "--merged-lands-dir",
+                data.to_str().expect("data path"),
+                "--output-file-dir",
+                data.to_str().expect("data path"),
+                "--output-file",
+                "Result.esp",
+            ])
+            .expect("parse CLI");
+            run_merge_on_worker_thread(cli).expect("merge texture override");
+            let output = load_output_plugin(&data.join("Result.esp"));
+            assert_eq!(output.objects_of_type::<Landscape>().count(), 2);
+            let textures: Vec<_> = output.objects_of_type::<LandscapeTexture>().collect();
+            assert_eq!(
+                textures.len(),
+                1,
+                "texture IDs are case-insensitive identities"
+            );
+            assert_eq!(
+                textures[0].file_name.as_deref(),
+                Some("new_grass.dds"),
+                "generated LTEX must not undo the {patch_id} override"
+            );
+            assert!(
+                output
+                    .objects_of_type::<Header>()
+                    .next()
+                    .expect("header")
+                    .masters
+                    .as_ref()
+                    .expect("masters")
+                    .iter()
+                    .any(|(name, _)| name == "Textures.esp")
+            );
+            fs::remove_dir_all(data).expect("remove inputs");
+        }
+    }
+
+    #[test]
     fn e2e_ltex_pruning_removes_all_textures_when_no_land_remains() {
         let root = unique_temp_dir("e2e_ltex_prune");
         let data_files = root.join("Data Files");
