@@ -1768,6 +1768,38 @@ mod tests {
     }
 
     #[test]
+    fn cleanup_drops_historical_normal_changes_and_subunit_height_differences() {
+        let mut first = fixture_land((0, 0), 32, None);
+        first.vertex_normals = Some(VertexNormals {
+            data: Box::new([[[7, -3, 2]; 65]; 65]),
+        });
+        let mut last = fixture_land((0, 0), 64, None);
+        last.vertex_normals = Some(VertexNormals {
+            data: Box::new([[[-17, 23, 91]; 65]; 65]),
+        });
+        let plugins = vec![
+            parsed_plugin_with_land("First.esp", first, PluginMeta::default()),
+            parsed_plugin_with_land("Last.esp", last, PluginMeta::default()),
+        ];
+        let (mut merged, loaded) = merge_test_plugins(plugins);
+        let height_map = merged
+            .land
+            .get_mut(&crate::Vec2::new(0, 0))
+            .expect("cell")
+            .height_map
+            .as_mut()
+            .expect("heights");
+        height_map.set_value(Index2D::new(32, 32), 65);
+        crate::repair::height_encoding::repair_height_encoding(&mut merged);
+        clean_landmass_diff(&mut merged, &loaded);
+
+        assert!(
+            merged.land.is_empty(),
+            "final stored geometry and authored normals match the winning plugin"
+        );
+    }
+
+    #[test]
     fn cleanup_restores_layers_missing_from_the_whole_record_winner() {
         run_with_large_stack(|| {
             let coords = crate::Vec2::new(3, -4);

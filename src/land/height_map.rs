@@ -92,31 +92,23 @@ fn calculate_height_map<const T: usize>(vertex_heights: &VertexHeights) -> Terra
     grid_height
 }
 
+/// The triangle used by the normal calculation, including the reused edge samples.
+fn normal_sample_coords<const T: usize>(coords: Index2D) -> [Index2D; 3] {
+    let x = coords.x.min(T - 2);
+    let y = coords.y.min(T - 2);
+    [
+        Index2D::new(x, y),
+        Index2D::new(x + 1, y),
+        Index2D::new(x, y + 1),
+    ]
+}
+
 /// Calculates the normal at one vertex, reusing the last row or column on cell edges.
 pub(crate) fn calculate_vertex_normal<const T: usize>(
     height_map: &TerrainMap<i32, T>,
     coords: Index2D,
 ) -> Vec3<i8> {
-    /// On the edge of the cell, reuse the last row or column.
-    fn fix_coords<const T: usize>(coords: Index2D) -> Index2D {
-        let x = if coords.x + 1 == T {
-            coords.x - 1
-        } else {
-            coords.x
-        };
-
-        let y = if coords.y + 1 == T {
-            coords.y - 1
-        } else {
-            coords.y
-        };
-
-        Index2D::new(x, y)
-    }
-
-    let fixed_coords = fix_coords::<T>(coords);
-
-    let coords_right = Index2D::new(fixed_coords.x + 1, fixed_coords.y);
+    let [fixed_coords, coords_right, coords_up] = normal_sample_coords::<T>(coords);
 
     let h = height_map
         .get(fixed_coords)
@@ -134,7 +126,6 @@ pub(crate) fn calculate_vertex_normal<const T: usize>(
         z: x1 - h,
     };
 
-    let coords_up = Index2D::new(fixed_coords.x, fixed_coords.y + 1);
     let y1 = height_map
         .get(coords_up)
         .to_f32()
@@ -175,6 +166,30 @@ pub fn calculate_vertex_normals_map<const T: usize>(
         *terrain.get_mut(coords) = calculate_vertex_normal(height_map, coords);
     }
     terrain
+}
+
+/// Preserve the loaded author's normals wherever their triangle heights still match.
+/// Recompute changed triangles from the final stored height grid before cleanup.
+pub fn recompute_vertex_normals(
+    heights: &TerrainMap<i32, 65>,
+    loaded_heights: Option<&TerrainMap<i32, 65>>,
+    loaded_normals: Option<&TerrainMap<Vec3<i8>, 65>>,
+) -> TerrainMap<Vec3<i8>, 65> {
+    let (Some(loaded_heights), Some(loaded_normals)) = (loaded_heights, loaded_normals) else {
+        return calculate_vertex_normals_map(heights);
+    };
+
+    let mut normals = *loaded_normals;
+    for coords in heights.iter_grid() {
+        let unchanged = normal_sample_coords::<65>(coords)
+            .into_iter()
+            .all(|sample| heights.get(sample) == loaded_heights.get(sample));
+        if !unchanged {
+            *normals.get_mut(coords) = calculate_vertex_normal(heights, coords);
+        }
+    }
+
+    normals
 }
 
 /// Calculate a [`TerrainMap`] of the [Landscape]'s height map by converting the
@@ -223,6 +238,59 @@ mod tests {
         try_calculate_height_map,
     };
     use tes3::esp::{Landscape, LandscapeFlags};
+
+    fn flat_heights() -> Box<[[i32; 65]; 65]> {
+        vec![[0; 65]; 65]
+            .into_boxed_slice()
+            .try_into()
+            .expect("65 rows")
+    }
+
+    #[test]
+    fn normals_preserve_the_winning_authored_values_for_unchanged_geometry() {
+        let heights = flat_heights();
+        let mut authored = [[super::Vec3::new(7, -3, 2); 65]; 65];
+        authored[10][10] = super::Vec3::default();
+        assert_eq!(
+            super::recompute_vertex_normals(&heights, Some(&heights), Some(&authored)),
+            authored
+        );
+    }
+
+    #[test]
+    fn normals_update_neighboring_samples_and_reused_cell_edges() {
+        let loaded = flat_heights();
+        let mut heights = loaded.clone();
+        heights[32][32] = 256;
+        heights[32][64] = 128;
+        heights[64][32] = 128;
+        let authored = [[super::Vec3::new(7, -3, 2); 65]; 65];
+        let normals = super::recompute_vertex_normals(&heights, Some(&loaded), Some(&authored));
+        let generated = super::calculate_vertex_normals_map(&heights);
+
+        for (x, y) in [
+            (32, 32),
+            (31, 32),
+            (32, 31),
+            (63, 32),
+            (64, 32),
+            (32, 63),
+            (32, 64),
+        ] {
+            assert_eq!(normals[y][x], generated[y][x]);
+            assert_ne!(normals[y][x], authored[y][x]);
+        }
+        assert_eq!(normals[10][10], authored[10][10]);
+    }
+
+    #[test]
+    fn normals_are_generated_when_the_winner_has_no_normal_payload() {
+        let heights = flat_heights();
+        assert_eq!(
+            super::recompute_vertex_normals(&heights, Some(&heights), None),
+            super::calculate_vertex_normals_map(&heights)
+        );
+    }
 
     #[test]
     fn vertex_heights_reject_unrepresentable_deltas_instead_of_clamping() {

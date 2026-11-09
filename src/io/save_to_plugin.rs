@@ -1,11 +1,10 @@
 use crate::cli::SortOrder;
 use crate::io::parsed_plugins::{DataDirs, ParsedPlugins, meta_name, sort_plugins};
 use crate::land::conversions::convert_terrain_map;
-use crate::land::height_map::calculate_vertex_heights_tes3;
+use crate::land::height_map::{calculate_vertex_heights_tes3, calculate_vertex_normals_map};
 use crate::land::landscape_diff::LandscapeDiff;
 use crate::land::terrain_map::Vec3;
 use crate::land::textures::{KnownTextures, RemappedTextures};
-use crate::merge::relative_terrain_map::recompute_vertex_normals;
 use crate::{Landmass, LandmassDiff};
 use anyhow::{Context, Result, anyhow};
 use log::{debug, trace, warn};
@@ -55,11 +54,13 @@ fn convert_landscape_diff_to_landscape(
             })?,
         );
 
+        let normals = if let Some(normals) = landscape.vertex_normals.as_ref() {
+            normals.to_terrain()
+        } else {
+            calculate_vertex_normals_map(&height_map.to_terrain())
+        };
         new_landscape.vertex_normals = Some(VertexNormals {
-            data: Box::new(convert_terrain_map(
-                &recompute_vertex_normals(height_map, landscape.vertex_normals.as_ref()),
-                Vec3::into,
-            )),
+            data: Box::new(convert_terrain_map(&normals, Vec3::into)),
         });
     } else {
         assert!(

@@ -1,6 +1,5 @@
 use crate::land::grid_access::{GridAccessor2D, GridIterator2D, Index2D, SquareGridIterator};
-use crate::land::height_map::{calculate_vertex_normal, calculate_vertex_normals_map};
-use crate::land::terrain_map::{TerrainMap, Vec3};
+use crate::land::terrain_map::TerrainMap;
 use crate::merge::relative_to::RelativeTo;
 use const_default::ConstDefault;
 
@@ -77,17 +76,6 @@ impl<U: RelativeTo, const T: usize> RelativeTerrainMap<U, T> {
             difference != <U as RelativeTo>::Delta::default();
     }
 
-    /// Get the difference at `coords`.
-    pub fn get_difference(&self, coords: Index2D) -> <U as RelativeTo>::Delta {
-        let delta = self.data.relative.get(coords);
-        if delta == <U as RelativeTo>::Delta::default() {
-            assert!(!self.data.has_difference.get(coords));
-        } else {
-            assert!(self.data.has_difference.get(coords));
-        }
-        delta
-    }
-
     /// Returns `true` if there is a difference at `coords` with respect to the reference.
     pub fn has_difference(&self, coords: Index2D) -> bool {
         if self.data.has_difference.get(coords) {
@@ -156,42 +144,10 @@ impl<U: RelativeTo, const T: usize> IsModified for OptionalTerrainMap<U, T> {
     }
 }
 
-/// Creates a [`TerrainMap`] representing the vertex normals of the `height_map` argument by
-/// recalculating the vertex normals from the terrain. If the optional `vertex_normals`
-/// is [Some], then the function will reuse those vertex normals on any unmodified coordinate
-/// in the `height_map` instead of calculating new normals.
-pub fn recompute_vertex_normals(
-    height_map: &RelativeTerrainMap<i32, 65>,
-    vertex_normals: Option<&RelativeTerrainMap<Vec3<i8>, 65>>,
-) -> TerrainMap<Vec3<i8>, 65> {
-    let height_map_abs = height_map.to_terrain();
-
-    let Some(vertex_normals) = vertex_normals else {
-        return calculate_vertex_normals_map(&height_map_abs);
-    };
-
-    let mut recomputed_vertex_normals = [[Vec3::default(); 65]; 65];
-    for coords in height_map.iter_grid() {
-        if !height_map.has_difference(coords) {
-            assert_eq!(vertex_normals.get_difference(coords), Vec3::default());
-            let existing = vertex_normals.get_value(coords);
-            if existing != Vec3::default() {
-                *recomputed_vertex_normals.get_mut(coords) = existing;
-                continue;
-            }
-        }
-        *recomputed_vertex_normals.get_mut(coords) =
-            calculate_vertex_normal(&height_map_abs, coords);
-    }
-
-    recomputed_vertex_normals
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{IsModified, OptionalTerrainMap, RelativeTerrainMap, recompute_vertex_normals};
-    use crate::land::grid_access::{GridAccessor2D, Index2D};
-    use crate::land::terrain_map::{TerrainMap, Vec3};
+    use super::{IsModified, OptionalTerrainMap, RelativeTerrainMap};
+    use crate::land::grid_access::Index2D;
 
     #[test]
     fn absent_terrain_maps_do_not_reserve_inline_grids() {
@@ -214,7 +170,6 @@ mod tests {
         map.set_value(coords, 5);
 
         assert!(map.has_difference(coords));
-        assert_eq!(map.get_difference(coords), 5);
         assert_eq!(map.get_value(coords), 5);
         assert!(map.is_modified());
     }
@@ -260,95 +215,5 @@ mod tests {
 
         some_map.set_value(Index2D::new(0, 0), 1);
         assert!(Some(some_map).is_modified());
-    }
-
-    #[test]
-    fn recompute_vertex_normals_reuses_unmodified_existing_values() {
-        let height_reference: Box<[[i32; 65]; 65]> = vec![[0i32; 65]; 65]
-            .into_boxed_slice()
-            .try_into()
-            .expect("valid 65x65 height map");
-        let height_map = RelativeTerrainMap::<i32, 65>::empty(*height_reference);
-        let old_normals_reference: TerrainMap<Vec3<i8>, 65> = [[Vec3::new(7, -3, 2); 65]; 65];
-        let old_normals = RelativeTerrainMap::<Vec3<i8>, 65>::empty(old_normals_reference);
-
-        let recomputed = recompute_vertex_normals(&height_map, Some(&old_normals));
-        assert_eq!(recomputed.get(Index2D::new(10, 10)), Vec3::new(7, -3, 2));
-    }
-
-    #[test]
-    fn recompute_vertex_normals_does_not_preserve_zero_existing_values() {
-        let height_reference: Box<[[i32; 65]; 65]> = vec![[0i32; 65]; 65]
-            .into_boxed_slice()
-            .try_into()
-            .expect("valid 65x65 height map");
-        let height_map = RelativeTerrainMap::<i32, 65>::empty(*height_reference);
-        let old_normals_reference: TerrainMap<Vec3<i8>, 65> = [[Vec3::default(); 65]; 65];
-        let old_normals = RelativeTerrainMap::<Vec3<i8>, 65>::empty(old_normals_reference);
-
-        let recomputed = recompute_vertex_normals(&height_map, Some(&old_normals));
-        assert_ne!(recomputed.get(Index2D::new(10, 10)), Vec3::default());
-    }
-
-    #[test]
-    fn recompute_vertex_normals_matches_full_calculation_with_mixed_changes() {
-        let mut reference: Box<TerrainMap<i32, 65>> = vec![[0i32; 65]; 65]
-            .into_boxed_slice()
-            .try_into()
-            .expect("valid 65x65 height map");
-        let mut normals_reference = [[Vec3::new(7, -3, 2); 65]; 65];
-        for (y, row) in reference.iter_mut().enumerate() {
-            for (x, height) in row.iter_mut().enumerate() {
-                *height = i32::try_from((x * 37 + y * 61 + x * y) % 1024).expect("bounded height")
-                    * 8
-                    - 4096;
-                if (x + y * 13) % 19 == 0 {
-                    normals_reference[y][x] = Vec3::default();
-                }
-            }
-        }
-
-        let mut height_map = RelativeTerrainMap::empty(*reference);
-        let mut normals = RelativeTerrainMap::empty(normals_reference);
-        for (y, row) in reference.iter().enumerate() {
-            for (x, height) in row.iter().enumerate() {
-                if (x + y * 13) % 17 == 0 || x == 64 || y == 64 {
-                    let coords = Index2D::new(x, y);
-                    height_map.set_value(coords, *height + 128);
-                    normals.set_value(coords, Vec3::new(-17, 23, 91));
-                }
-            }
-        }
-
-        let full = crate::land::height_map::calculate_vertex_normals_map(&height_map.to_terrain());
-        assert_eq!(recompute_vertex_normals(&height_map, None), full);
-
-        let mut expected = full;
-        for (y, row) in expected.iter_mut().enumerate() {
-            for (x, normal) in row.iter_mut().enumerate() {
-                let coords = Index2D::new(x, y);
-                if !height_map.has_difference(coords) && normals_reference[y][x] != Vec3::default()
-                {
-                    *normal = normals_reference[y][x];
-                }
-            }
-        }
-        assert_eq!(
-            recompute_vertex_normals(&height_map, Some(&normals)),
-            expected
-        );
-    }
-
-    #[test]
-    #[should_panic(expected = "assertion `left == right` failed")]
-    fn recompute_vertex_normals_rejects_normal_changes_at_unchanged_heights() {
-        let reference: Box<TerrainMap<i32, 65>> = vec![[0i32; 65]; 65]
-            .into_boxed_slice()
-            .try_into()
-            .expect("valid 65x65 height map");
-        let height_map = RelativeTerrainMap::empty(*reference);
-        let mut normals = RelativeTerrainMap::empty([[Vec3::new(0i8, 0, 127); 65]; 65]);
-        normals.set_value(Index2D::new(64, 64), Vec3::new(1, 0, 127));
-        let _ = recompute_vertex_normals(&height_map, Some(&normals));
     }
 }

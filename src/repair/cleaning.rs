@@ -1,7 +1,7 @@
 use crate::io::parsed_plugins::{ParsedPlugin, ParsedPlugins};
 use crate::land::conversions::{texture_indices, vertex_colors, vertex_normals, world_map_data};
 use crate::land::grid_access::{GridAccessor2D, SquareGridIterator};
-use crate::land::height_map::try_calculate_height_map;
+use crate::land::height_map::{recompute_vertex_normals, try_calculate_height_map};
 use crate::land::landscape_diff::LandscapeDiff;
 use crate::land::terrain_map::TerrainMap;
 use crate::land::textures::{KnownTextures, RemappedTextures};
@@ -57,10 +57,29 @@ fn update_known_textures(plugin: &Arc<ParsedPlugin>, known_textures: &mut KnownT
     }
 }
 
+/// Finalize normals while the complete terrain and the raw engine winner are available.
+fn finalize_vertex_normals(landmass: &mut LandmassDiff, loaded_landmass: &Landmass) {
+    for (coords, land) in &mut landmass.land {
+        let Some(heights) = land.height_map.as_ref() else {
+            continue;
+        };
+        let loaded = loaded_landmass.land.get(coords);
+        let loaded_heights = loaded.and_then(try_calculate_height_map);
+        let loaded_normals = loaded.and_then(vertex_normals);
+        let normals = recompute_vertex_normals(
+            &heights.to_terrain(),
+            loaded_heights.as_ref(),
+            loaded_normals.as_ref(),
+        );
+        land.vertex_normals = Some(RelativeTerrainMap::empty(normals));
+    }
+}
+
 /// Remove any [`crate::LandscapeDiff`] from the [`LandmassDiff`] that would not change the final
 /// loaded LAND state.
 pub fn clean_landmass_diff(landmass: &mut LandmassDiff, loaded_landmass: &Landmass) {
     assert_eq!(repair_landmass_seams(landmass), 0);
+    finalize_vertex_normals(landmass, loaded_landmass);
 
     let before = landmass.land.len();
     landmass.land.retain(|coords, land| {
