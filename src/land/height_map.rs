@@ -29,10 +29,13 @@ fn calculate_vertex_heights<const T: usize>(
     height_map: &TerrainMap<i32, T>,
 ) -> Result<(f32, TerrainMap<i8, T>)> {
     let mut terrain = [[0; T]; T];
-    let get_pixel = |y: usize, x: usize| height_map[y][x] / HEIGHT_MAP_SCALE_FACTOR;
-    let offset = get_pixel(0, 0).to_f32().expect("i32 fits in f32");
+    let phase = height_map[0][0].rem_euclid(HEIGHT_MAP_SCALE_FACTOR);
+    let get_pixel = |y: usize, x: usize| {
+        (i64::from(height_map[y][x]) - i64::from(phase)) / i64::from(HEIGHT_MAP_SCALE_FACTOR)
+    };
+    let offset = height_map[0][0].to_f32().expect("i32 fits in f32") / HEIGHT_MAP_SCALE_FACTOR_F32;
     ensure!(
-        offset.to_i32() == Some(get_pixel(0, 0)),
+        (offset * HEIGHT_MAP_SCALE_FACTOR_F32).to_i32() == Some(height_map[0][0]),
         "VHGT offset loses height precision"
     );
 
@@ -45,7 +48,11 @@ fn calculate_vertex_heights<const T: usize>(
             } else {
                 get_pixel(0, 0)
             };
-            let difference = i64::from(get_pixel(y, x)) - i64::from(previous);
+            ensure!(
+                height_map[y][x].rem_euclid(HEIGHT_MAP_SCALE_FACTOR) == phase,
+                "VHGT vertex ({x}, {y}) has a different eight-unit phase from its offset"
+            );
+            let difference = get_pixel(y, x) - previous;
             *delta = i8::try_from(difference).with_context(|| {
                 format!("VHGT delta {difference} at vertex ({x}, {y}) exceeds -128..=127")
             })?;
@@ -70,23 +77,18 @@ pub fn calculate_vertex_heights_tes3(
 /// Creates [`TerrainMap`] from the `vertex_heights` [`VertexHeights`].
 fn calculate_height_map<const T: usize>(vertex_heights: &VertexHeights) -> TerrainMap<i32, T> {
     let mut grid_height = [[0; T]; T];
-    let mut height = vertex_heights
-        .offset
-        .to_i32()
-        .expect("vertex height offset should convert to i32");
-
-    for y in 0..T {
-        for x in 0..T {
-            let coords = Index2D::new(x, y);
-            height += i32::from(vertex_heights.data.get(coords));
-            *grid_height.get_mut(coords) = height;
+    let mut row_height = vertex_heights.offset;
+    for (y, row) in grid_height.iter_mut().enumerate() {
+        row_height += f32::from(vertex_heights.data[y][0]);
+        let mut height = row_height;
+        for (x, value) in row.iter_mut().enumerate() {
+            if x > 0 {
+                height += f32::from(vertex_heights.data[y][x]);
+            }
+            *value = (height * HEIGHT_MAP_SCALE_FACTOR_F32)
+                .to_i32()
+                .expect("vertex height should fit in integer world units");
         }
-
-        height = grid_height.get(Index2D::new(0, y));
-    }
-
-    for coords in grid_height.iter_grid() {
-        *grid_height.get_mut(coords) *= HEIGHT_MAP_SCALE_FACTOR;
     }
 
     grid_height
@@ -323,6 +325,20 @@ mod tests {
             super::recompute_vertex_normals(&heights, None, []),
             super::calculate_vertex_normals_map(&heights)
         );
+    }
+
+    #[test]
+    fn fractional_offsets_roundtrip_in_world_units() {
+        for base in [4, -4, 1, -1] {
+            let mut heights = flat_heights();
+            for (y, row) in heights.iter_mut().enumerate() {
+                for (x, value) in row.iter_mut().enumerate() {
+                    *value = base + i32::try_from(x + y).expect("index") * 8;
+                }
+            }
+            let encoded = calculate_vertex_heights_tes3(&heights).expect("fractional offset");
+            assert_eq!(calculate_height_map::<65>(&encoded), *heights);
+        }
     }
 
     #[test]
