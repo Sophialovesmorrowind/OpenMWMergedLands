@@ -26,7 +26,7 @@ log = "0.4.29"
 anyhow = "1.0.103"
 
 # For producing images of terrain.
-image = { version = "0.24.9", default-features = false, features = ["png"] }
+image = { version = "0.25.10", default-features = false, features = ["png"] }
 
 # Parsing and writing ESPs.
 [dependencies.tes3]
