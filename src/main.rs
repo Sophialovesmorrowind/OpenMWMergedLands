@@ -1280,6 +1280,9 @@ fn merge_landscape_diff(
         plugins: old.plugins.clone(),
     };
     merged.plugins.push((plugin.clone(), new.modified_data()));
+    merged
+        .normal_sources
+        .extend(new.normal_sources.iter().cloned());
 
     let coords = merged.coords;
 
@@ -1829,7 +1832,64 @@ mod tests {
             );
             assert!(land.texture_indices.is_some());
             assert!(land.world_map_data.is_some());
+            assert!(
+                land.vertex_normals
+                    .as_ref()
+                    .expect("authored normals")
+                    .data
+                    .iter()
+                    .flatten()
+                    .all(|normal| *normal == [64, 0, 110])
+            );
         }
+    }
+
+    #[test]
+    fn partial_normals_validate_against_rolling_source_geometry() {
+        use crate::io::meta_schema::ConflictStrategy;
+
+        run_with_large_stack(|| {
+            let base = fixture_land((0, 0), 80, None);
+            let changed = fixture_land((0, 0), 160, None);
+            let ignored = PluginMeta {
+                height_map: MergeSettings {
+                    conflict_strategy: ConflictStrategy::Ignore,
+                    ..MergeSettings::default()
+                },
+                ..PluginMeta::default()
+            };
+            let partial = Landscape {
+                grid: (0, 0),
+                landscape_flags: LandscapeFlags::USES_VERTEX_HEIGHTS_AND_NORMALS,
+                vertex_normals: Some(VertexNormals {
+                    data: Box::new([[[64, 0, 110]; 65]; 65]),
+                }),
+                ..Landscape::default()
+            };
+            let (mut merged, loaded) = merge_test_plugins(vec![
+                parsed_plugin_with_land("Base.esm", base, PluginMeta::default()),
+                parsed_plugin_with_land("Changed.esp", changed, ignored),
+                parsed_plugin_with_land("Partial.esp", partial, PluginMeta::default()),
+            ]);
+
+            crate::repair::height_encoding::repair_height_encoding(&mut merged);
+            clean_landmass_diff(&mut merged, &loaded);
+            let land = &merged.land[&crate::Vec2::new(0, 0)];
+            assert_eq!(
+                land.height_map
+                    .as_ref()
+                    .expect("heights")
+                    .get_value(Index2D::new(32, 32)),
+                80
+            );
+            assert_eq!(
+                land.vertex_normals
+                    .as_ref()
+                    .expect("normals")
+                    .get_value(Index2D::new(32, 32)),
+                Vec3::new(0, 0, 127)
+            );
+        });
     }
 
     #[test]

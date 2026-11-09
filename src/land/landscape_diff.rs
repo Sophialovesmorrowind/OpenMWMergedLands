@@ -190,6 +190,20 @@ impl LandscapeDiff {
             None
         };
 
+        // A VNML-only patch applies to the rolling terrain without replacing its
+        // heights. Keep that geometry so finalization can validate its vectors.
+        let mut normal_sources = Vec::new();
+        if land.vertex_heights.is_none()
+            && let Some(normals) = vertex_normals.as_ref()
+            && let Some(heights) = reference.and_then(try_calculate_height_map)
+        {
+            normal_sources.push(Arc::new(NormalSource {
+                heights,
+                normals: normals.to_terrain(),
+                selected: None,
+            }));
+        }
+
         let world_map_data = Self::calculate_differences(
             "world_map_data",
             included_data.uses_world_map_data() && allowed_data.contains(LandData::WORLD_MAP),
@@ -221,7 +235,7 @@ impl LandscapeDiff {
             world_map_data,
             vertex_colors,
             texture_indices,
-            normal_sources: Vec::new(),
+            normal_sources,
             plugins: Vec::new(),
         }
     }
