@@ -979,8 +979,8 @@ fn try_create_landmass(
     try_copy_landscape_and_remap_textures(plugin, &remapped_textures)
 }
 
-/// Updates the winning [Landscape] with the included records from `rhs`.
-fn merge_tes3_landscape_into(land: &mut Landscape, rhs: &Landscape) {
+/// Compose included terrain layers for the merge reference, preserving absent layers.
+fn merge_landscape_layers_into(land: &mut Landscape, rhs: &Landscape) {
     let mut old_data = landscape_flags(land);
     let new_data = landscape_flags(rhs);
 
@@ -1085,13 +1085,11 @@ fn filter_landscape_to_allowed_data(plugin: &ParsedPlugin, land: &Landscape) -> 
     Some(filtered)
 }
 
-/// Applies the winning LAND state from `next` into `merged`, updating the source plugin for
-/// every cell that `next` contributes. This matches last-loaded LAND record behavior while still
-/// respecting the current master-before-plugin ordering used by the tool.
-fn merge_tes3_landmass_into(merged: &mut Landmass, next: &Landmass) {
+/// Compose terrain layers for the master reference; this is merge policy, not engine loading.
+fn merge_landmass_layers_into(merged: &mut Landmass, next: &Landmass) {
     for (coords, land) in &next.land {
         if let Some(existing) = merged.land.get_mut(coords) {
-            merge_tes3_landscape_into(existing, land);
+            merge_landscape_layers_into(existing, land);
         } else {
             merged.land.insert(*coords, land.clone());
         }
@@ -1100,11 +1098,18 @@ fn merge_tes3_landmass_into(merged: &mut Landmass, next: &Landmass) {
     }
 }
 
+/// Model the engine's whole-record winner independently of per-layer merge policy.
+fn replace_loaded_landmass_into(loaded: &mut Landmass, next: &Landmass) {
+    for (coords, land) in &next.land {
+        loaded.insert_land_owned(*coords, &next.plugin, land.clone());
+    }
+}
+
 fn merge_allowed_landmass_into(merged: &mut Landmass, next: &Landmass) {
     for (coords, land) in &next.land {
         if let Some(land) = filter_landscape_to_allowed_data(&next.plugin, land) {
             if let Some(existing) = merged.land.get_mut(coords) {
-                merge_tes3_landscape_into(existing, &land);
+                merge_landscape_layers_into(existing, &land);
                 merged.plugins.insert(*coords, next.plugin.clone());
             } else {
                 merged.insert_land_owned(*coords, &next.plugin, land);
@@ -1168,9 +1173,9 @@ fn create_reference_and_modded_landmasses(
         let Some(mut landmass) = try_create_landmass(master, known_textures) else {
             continue;
         };
-        merge_tes3_landmass_into(&mut raw_load_order_landmass, &landmass);
+        replace_loaded_landmass_into(&mut raw_load_order_landmass, &landmass);
         remove_ignored_cells(&mut landmass, config);
-        merge_tes3_landmass_into(&mut reference_landmass, &landmass);
+        merge_landmass_layers_into(&mut reference_landmass, &landmass);
     }
 
     let mut rolling_reference = reference_landmass.clone();
@@ -1188,7 +1193,7 @@ fn create_reference_and_modded_landmasses(
 
         // Cleanup must compare against what the game actually loads, including ignored
         // changes, so that output needed to restore an earlier plugin's terrain is retained.
-        merge_tes3_landmass_into(&mut raw_load_order_landmass, &landmass);
+        replace_loaded_landmass_into(&mut raw_load_order_landmass, &landmass);
         remove_ignored_cells(&mut landmass, config);
         if landmass.land.is_empty() {
             continue;
@@ -1431,7 +1436,7 @@ fn create_merged_lands_from_reference(reference: &Landmass) -> LandmassDiff {
 mod tests {
     use super::{
         create_merged_lands_from_reference, create_reference_and_modded_landmasses,
-        merge_landmass_into, merge_load_order_texture_indices, merge_tes3_landscape_into,
+        merge_landmass_into, merge_landscape_layers_into, merge_load_order_texture_indices,
         run_merge_on_worker_thread,
     };
     use crate::io::app_config::{CONFIG_FILE_NAME, MergedLandsConfig};
@@ -1806,6 +1811,60 @@ mod tests {
     }
 
     #[test]
+    fn cleanup_restores_layers_missing_from_the_whole_record_winner() {
+        run_with_large_stack(|| {
+            let coords = crate::Vec2::new(3, -4);
+            let mut full = fixture_land_with_vertex_color((3, -4), 64, Vec3::new(11, 22, 33));
+            full.landscape_flags |= LandscapeFlags::USES_TEXTURES;
+            full.texture_indices = Some(TextureIndices {
+                data: Box::new([[1; 16]; 16]),
+            });
+            let mut base = parsed_plugin_with_land("Base.esm", full, PluginMeta::default());
+            Arc::get_mut(&mut base)
+                .expect("exclusive fixture")
+                .records
+                .objects
+                .push(TES3Object::LandscapeTexture(fixture_ltex(
+                    "grass",
+                    0,
+                    "grass.dds",
+                )));
+            let partial = fixture_land((3, -4), 64, None);
+            let winner =
+                parsed_plugin_with_land("Partial.esp", partial.clone(), PluginMeta::default());
+            let (mut merged, loaded) = merge_test_plugins(vec![base, winner]);
+
+            assert_eq!(
+                loaded.land[&coords], partial,
+                "missing layers must not be inherited by the engine model"
+            );
+            assert_eq!(loaded.plugins[&coords].name, "Partial.esp");
+            clean_landmass_diff(&mut merged, &loaded);
+
+            let restored = merged
+                .land
+                .get(&coords)
+                .expect("older layers require an override");
+            assert_eq!(
+                restored
+                    .vertex_colors
+                    .as_ref()
+                    .expect("colors")
+                    .get_value(Index2D::new(32, 32)),
+                Vec3::new(11, 22, 33)
+            );
+            assert_eq!(
+                restored
+                    .texture_indices
+                    .as_ref()
+                    .expect("textures")
+                    .get_value(Index2D::new(0, 0)),
+                idx(1)
+            );
+        });
+    }
+
+    #[test]
     fn landscape_merge_preserves_fields_absent_or_excluded_from_incoming_record() {
         let mut land = fixture_land_with_vertex_color((3, -4), 32, Vec3::new(11, 22, 33));
         land.landscape_flags |= LandscapeFlags::USES_TEXTURES;
@@ -1833,7 +1892,7 @@ mod tests {
 
         // Populated fields without an inclusion flag must leave the winning record intact.
         incoming.landscape_flags = LandscapeFlags::UNKNOWN;
-        merge_tes3_landscape_into(&mut land, &incoming);
+        merge_landscape_layers_into(&mut land, &incoming);
         assert_eq!(land, expected);
 
         // Included heights can update independently of normals, colors, and textures.
@@ -1841,7 +1900,7 @@ mod tests {
         incoming.vertex_normals = None;
         expected.vertex_heights = incoming.vertex_heights.clone();
         expected.world_map_data = incoming.world_map_data.clone();
-        merge_tes3_landscape_into(&mut land, &incoming);
+        merge_landscape_layers_into(&mut land, &incoming);
         assert_eq!(land, expected);
 
         // Missing heights and world map data preserve their previous values.
@@ -1851,19 +1910,19 @@ mod tests {
         });
         incoming.world_map_data = None;
         expected.vertex_normals = incoming.vertex_normals.clone();
-        merge_tes3_landscape_into(&mut land, &incoming);
+        merge_landscape_layers_into(&mut land, &incoming);
         assert_eq!(land, expected);
 
         incoming.landscape_flags =
             LandscapeFlags::USES_VERTEX_COLORS | LandscapeFlags::USES_TEXTURES;
         expected.vertex_colors = incoming.vertex_colors.clone();
         expected.texture_indices = incoming.texture_indices.clone();
-        merge_tes3_landscape_into(&mut land, &incoming);
+        merge_landscape_layers_into(&mut land, &incoming);
         assert_eq!(land, expected);
 
         incoming.vertex_colors = None;
         incoming.texture_indices = None;
-        merge_tes3_landscape_into(&mut land, &incoming);
+        merge_landscape_layers_into(&mut land, &incoming);
         assert_eq!(land, expected);
     }
 
