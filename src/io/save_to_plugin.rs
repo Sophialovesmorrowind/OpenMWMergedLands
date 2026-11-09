@@ -364,6 +364,7 @@ mod tests {
             world_map_data: None,
             vertex_colors: None,
             texture_indices: Some(texture_indices),
+            normal_sources: Vec::new(),
             plugins: vec![(plugin, LandData::default())],
         }
     }
@@ -385,6 +386,7 @@ mod tests {
             world_map_data: None,
             vertex_colors: None,
             texture_indices: Some(texture_indices),
+            normal_sources: Vec::new(),
             plugins: vec![(plugin, LandData::default())],
         }
     }

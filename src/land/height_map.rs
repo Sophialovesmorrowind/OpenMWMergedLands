@@ -5,6 +5,7 @@ use crate::term_style::yellow;
 use anyhow::{Context, Result, ensure};
 use log::warn;
 use num_traits::ToPrimitive;
+use std::sync::Arc;
 use tes3::esp::{Landscape, LandscapeFlags, VertexHeights};
 
 const CELL_SIZE: usize = 65;
@@ -170,13 +171,21 @@ pub fn calculate_vertex_normals_map<const T: usize>(
     terrain
 }
 
-/// Keep selected authored vectors wherever an input supplies them for the final geometry.
+/// Geometry associated with input normals or vectors synthesized by explicit Resolve.
+pub struct NormalSource {
+    pub heights: TerrainMap<i32, 65>,
+    pub normals: TerrainMap<Vec3<i8>, 65>,
+    /// A Resolve snapshot validates only vertices where it synthesized a new vector.
+    pub selected: Option<Box<TerrainMap<bool, 65>>>,
+}
+
+/// Keep selected vectors wherever a source supplies them for the final geometry.
 /// Source grids are loaded lazily: the winning LAND usually validates the whole cell.
 /// Recompute only vectors whose source geometry no longer matches after merging or repair.
 pub fn recompute_vertex_normals(
     heights: &TerrainMap<i32, 65>,
     authored: Option<&TerrainMap<Vec3<i8>, 65>>,
-    sources: impl IntoIterator<Item = (TerrainMap<i32, 65>, TerrainMap<Vec3<i8>, 65>)>,
+    sources: impl IntoIterator<Item = Arc<NormalSource>>,
 ) -> TerrainMap<Vec3<i8>, 65> {
     let Some(authored) = authored else {
         return calculate_vertex_normals_map(heights);
@@ -184,12 +193,16 @@ pub fn recompute_vertex_normals(
 
     let mut normals = *authored;
     let mut pending: Vec<_> = heights.iter_grid().collect();
-    for (source_heights, source_normals) in sources {
+    for source in sources {
         pending.retain(|coords| {
-            normals.get(*coords) != source_normals.get(*coords)
+            source
+                .selected
+                .as_ref()
+                .is_some_and(|selected| !selected.get(*coords))
+                || normals.get(*coords) != source.normals.get(*coords)
                 || normal_sample_coords::<65>(*coords)
                     .into_iter()
-                    .any(|sample| heights.get(sample) != source_heights.get(sample))
+                    .any(|sample| heights.get(sample) != source.heights.get(sample))
         });
         if pending.is_empty() {
             return normals;
@@ -248,7 +261,19 @@ mod tests {
         calculate_height_map, calculate_vertex_heights, calculate_vertex_heights_tes3,
         try_calculate_height_map,
     };
+    use std::sync::Arc;
     use tes3::esp::{Landscape, LandscapeFlags};
+
+    fn source(
+        heights: &super::TerrainMap<i32, 65>,
+        normals: &super::TerrainMap<super::Vec3<i8>, 65>,
+    ) -> Arc<super::NormalSource> {
+        Arc::new(super::NormalSource {
+            heights: *heights,
+            normals: *normals,
+            selected: None,
+        })
+    }
 
     fn flat_heights() -> Box<[[i32; 65]; 65]> {
         vec![[0; 65]; 65]
@@ -266,7 +291,7 @@ mod tests {
             super::recompute_vertex_normals(
                 &heights,
                 Some(&authored),
-                std::iter::once((*heights, authored))
+                std::iter::once(source(&heights, &authored))
             ),
             authored
         );
@@ -283,7 +308,7 @@ mod tests {
         let normals = super::recompute_vertex_normals(
             &heights,
             Some(&authored),
-            std::iter::once((*loaded, authored)),
+            std::iter::once(source(&loaded, &authored)),
         );
         let generated = super::calculate_vertex_normals_map(&heights);
 
@@ -307,8 +332,8 @@ mod tests {
         let heights = flat_heights();
         let authored = [[super::Vec3::new(64, 0, 110); 65]; 65];
         let winning = [[super::Vec3::new(-64, 0, 110); 65]; 65];
-        let sources = std::iter::once((*heights, winning))
-            .chain(std::iter::once((*heights, authored)))
+        let sources = std::iter::once(source(&heights, &winning))
+            .chain(std::iter::once(source(&heights, &authored)))
             .chain(std::iter::from_fn(|| {
                 panic!("later sources are unnecessary")
             }));
@@ -316,6 +341,23 @@ mod tests {
             super::recompute_vertex_normals(&heights, Some(&authored), sources),
             authored
         );
+    }
+
+    #[test]
+    fn resolved_sources_validate_only_the_selected_vertices() {
+        let heights = flat_heights();
+        let authored = [[super::Vec3::new(64, 64, 110); 65]; 65];
+        let mut selected = Box::new([[false; 65]; 65]);
+        selected[10][10] = true;
+        let sources = [Arc::new(super::NormalSource {
+            heights: *heights,
+            normals: authored,
+            selected: Some(selected),
+        })];
+
+        let normals = super::recompute_vertex_normals(&heights, Some(&authored), sources);
+        assert_eq!(normals[10][10], authored[10][10]);
+        assert_eq!(normals[11][11], super::Vec3::new(0, 0, 127));
     }
 
     #[test]

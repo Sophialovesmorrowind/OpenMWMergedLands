@@ -1276,6 +1276,7 @@ fn merge_landscape_diff(
         world_map_data: None,
         vertex_colors: None,
         texture_indices: None,
+        normal_sources: old.normal_sources.clone(),
         plugins: old.plugins.clone(),
     };
     merged.plugins.push((plugin.clone(), new.modified_data()));
@@ -1299,6 +1300,10 @@ fn merge_landscape_diff(
         new.vertex_normals.as_ref(),
         load_order_auto_strategy(plugin.meta.height_map.conflict_strategy),
     );
+
+    if plugin.meta.height_map.conflict_strategy == ConflictStrategy::Resolve {
+        merged.retain_resolved_normal_source(old, new);
+    }
 
     merged.world_map_data = apply_merge_strategy(
         coords,
@@ -1912,6 +1917,69 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn resolve_normals_survive_until_their_geometry_changes() {
+        use crate::io::meta_schema::ConflictStrategy;
+        use crate::land::height_map::{calculate_vertex_normals_map, try_calculate_height_map};
+
+        run_with_large_stack(|| {
+            for repair_height in [false, true] {
+                let mut plugins = Vec::new();
+                for (name, normal, strategy) in [
+                    ("Base.esm", [0, 0, 127], ConflictStrategy::Auto),
+                    ("Early.esp", [64, 0, 110], ConflictStrategy::Auto),
+                    ("Late.esp", [0, 64, 110], ConflictStrategy::Resolve),
+                ] {
+                    let mut land = fixture_land((0, 0), 80, None);
+                    land.vertex_normals = Some(VertexNormals {
+                        data: Box::new([[normal; 65]; 65]),
+                    });
+                    let meta = PluginMeta {
+                        height_map: MergeSettings {
+                            conflict_strategy: strategy,
+                            ..MergeSettings::default()
+                        },
+                        ..PluginMeta::default()
+                    };
+                    plugins.push(parsed_plugin_with_land(name, land, meta));
+                }
+                let (mut merged, loaded) = merge_test_plugins(plugins);
+                let coords = crate::Vec2::new(0, 0);
+                if repair_height {
+                    merged
+                        .land
+                        .get_mut(&coords)
+                        .expect("cell")
+                        .height_map
+                        .as_mut()
+                        .expect("heights")
+                        .set_value(Index2D::new(32, 32), 336);
+                }
+
+                crate::repair::height_encoding::repair_height_encoding(&mut merged);
+                clean_landmass_diff(&mut merged, &loaded);
+                let remapped = crate::land::textures::RemappedTextures::from(&[true]);
+                let output = crate::io::save_to_plugin::convert_landmass_diff_to_landmass(
+                    &merged, &remapped,
+                )
+                .expect("valid LAND");
+                let land = output.land.get(&coords).expect("resolved normal override");
+                let normals = &land.vertex_normals.as_ref().expect("normals").data;
+                assert_eq!(normals[10][10], [64, 64, 110]);
+
+                if repair_height {
+                    let heights = try_calculate_height_map(land).expect("heights");
+                    let generated = calculate_vertex_normals_map(&heights);
+                    for (x, y) in [(32, 32), (31, 32), (32, 31)] {
+                        assert_eq!(normals[y][x], <[i8; 3]>::from(generated[y][x]));
+                    }
+                } else {
+                    assert_eq!(normals[32][32], [64, 64, 110]);
+                }
+            }
+        });
     }
 
     #[test]
