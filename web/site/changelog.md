@@ -1,5 +1,28 @@
 # Changelog
 
+#### 1.3.0
+
+##### Terrain merging
+
+- Repaired shared terrain before VHGT encoding and rejected unrepresentable height steps instead of silently clamping them.
+- Preserved fractional height offsets and kept connected cells on a common height phase.
+- Made cleanup compare against OpenMW's whole LAND record winner and carried untouched winning layers into generated overrides.
+- Preserved present zero-valued terrain layers when later LAND records omit them.
+- Preserved independent authored normals, including normal-only patches and vectors synthesized by `Resolve`, while their source geometry still applies.
+- Respected case-insensitive texture IDs, LTEX-only overrides, and overrides that clear a texture filename.
+
+##### Memory use
+
+- Allocated optional terrain grids only when present.
+- Applied and released plugin diffs as they are read. Their history remains available when conflict images or debug vertex colors require it.
+- See the [terrain audit and ten-run comparison](https://github.com/Sophialovesmorrowind/OpenMWMergedLands/blob/main/docs/terrain-storage-audit.md) for measured results and validation limits.
+
+##### Maintenance
+
+- Updated `anyhow`, `bitflags`, `clap`, `image`, `log`, `serde`, `toml`, and `windows-sys`, plus the CI dependency cache action.
+- Kept cell-coordinate validation strict with the new TOML parser and retained the required LAND flag traits after the bitflags upgrade.
+- Aligned the CLI version and release metadata at 1.3.0.
+
 #### 1.1
 
 ##### Recent changes
