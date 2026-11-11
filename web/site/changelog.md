@@ -1,6 +1,6 @@
 # Changelog
 
-#### 1.3.0
+#### 1.3
 
 ##### Terrain merging
 
@@ -21,7 +21,7 @@
 
 - Updated `anyhow`, `bitflags`, `clap`, `image`, `log`, `serde`, `toml`, and `windows-sys`, plus the CI dependency cache action.
 - Kept cell-coordinate validation strict with the new TOML parser and retained the required LAND flag traits after the bitflags upgrade.
-- Aligned the CLI version and release metadata at 1.3.0.
+- Updated the CLI version for the 1.3 release.
 
 #### 1.1
 
