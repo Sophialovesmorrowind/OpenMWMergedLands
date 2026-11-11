@@ -3,7 +3,7 @@ use crate::land::conversions::{texture_indices, vertex_colors, vertex_normals, w
 use crate::land::grid_access::{GridAccessor2D, SquareGridIterator};
 use crate::land::height_map::{NormalSource, recompute_vertex_normals, try_calculate_height_map};
 use crate::land::landscape_diff::LandscapeDiff;
-use crate::land::terrain_map::TerrainMap;
+use crate::land::terrain_map::{TerrainMap, Vec3};
 use crate::land::textures::{KnownTextures, RemappedTextures};
 use crate::merge::relative_terrain_map::RelativeTerrainMap;
 use crate::merge::relative_to::RelativeTo;
@@ -45,7 +45,10 @@ fn has_any_difference_from_loaded_landscape(
     }) || differs_from_landscape(merged.world_map_data.as_ref(), || {
         loaded.and_then(world_map_data)
     }) || differs_from_landscape(merged.vertex_colors.as_ref(), || {
-        loaded.and_then(vertex_colors)
+        let loaded = loaded?;
+
+        // OpenMW renders an existing LAND without VCLR as white, not black.
+        Some(vertex_colors(loaded).unwrap_or_else(|| [[Vec3::new(255, 255, 255); 65]; 65]))
     }) || differs_from_landscape(merged.texture_indices.as_ref(), || {
         loaded.and_then(texture_indices)
     })

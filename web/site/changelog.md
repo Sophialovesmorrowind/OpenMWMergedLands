@@ -1,5 +1,9 @@
 # Changelog
 
+#### Unreleased
+
+- Omitted LAND overrides whose only change is adding white vertex colors where OpenMW already defaults to white.
+
 #### 1.3
 
 ##### Terrain merging

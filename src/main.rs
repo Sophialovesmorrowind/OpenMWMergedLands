@@ -1774,6 +1774,70 @@ mod tests {
     }
 
     #[test]
+    fn cleanup_compares_missing_vertex_colors_with_openmw_white() {
+        for color in [
+            Vec3::new(255, 255, 255),
+            Vec3::new(254, 255, 255),
+            Vec3::new(0, 0, 0),
+        ] {
+            let mut first = fixture_land_with_vertex_color((0, 0), 80, color);
+            first.vertex_normals = Some(VertexNormals {
+                data: Box::new([[[0, 0, 127]; 65]; 65]),
+            });
+            let mut last = first.clone();
+            last.landscape_flags
+                .remove(LandscapeFlags::USES_VERTEX_COLORS);
+            last.vertex_colors = None;
+
+            let (mut merged, loaded) = merge_test_plugins(vec![
+                parsed_plugin_with_land("Colored.esm", first, PluginMeta::default()),
+                parsed_plugin_with_land("WithoutColors.esp", last, PluginMeta::default()),
+            ]);
+            crate::repair::height_encoding::repair_height_encoding(&mut merged);
+            clean_landmass_diff(&mut merged, &loaded);
+
+            assert_eq!(
+                merged.land.is_empty(),
+                color == Vec3::new(255, 255, 255),
+                "only white colors match the engine's missing-VCLR default"
+            );
+        }
+    }
+
+    #[test]
+    fn white_vertex_colors_still_override_nonwhite_loaded_colors() {
+        let white = Vec3::new(255, 255, 255);
+        let first = fixture_land_with_vertex_color((0, 0), 80, white);
+        let last = fixture_land_with_vertex_color((0, 0), 80, Vec3::new(64, 96, 128));
+        let meta = PluginMeta {
+            vertex_colors: MergeSettings {
+                included: false,
+                ..MergeSettings::default()
+            },
+            ..PluginMeta::default()
+        };
+
+        let (mut merged, loaded) = merge_test_plugins(vec![
+            parsed_plugin_with_land("White.esm", first, PluginMeta::default()),
+            parsed_plugin_with_land("ExcludedColors.esp", last, meta),
+        ]);
+        crate::repair::height_encoding::repair_height_encoding(&mut merged);
+        clean_landmass_diff(&mut merged, &loaded);
+
+        let land = merged
+            .land
+            .get(&crate::Vec2::new(0, 0))
+            .expect("white override");
+        assert_eq!(
+            land.vertex_colors
+                .as_ref()
+                .expect("explicit white colors")
+                .get_value(Index2D::new(32, 32)),
+            white
+        );
+    }
+
+    #[test]
     fn default_predecessor_layers_survive_a_partial_land_winner() {
         for height in [0, 80] {
             let heights: Box<[[i32; 65]; 65]> = vec![[height; 65]; 65]
